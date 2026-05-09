@@ -1,0 +1,54 @@
+// KQL simulator data — sample tables, schema, and 10 guided exercises.
+// Used by /practice/kql to give the user something to actually query against.
+
+export const KQL_DATA = {
+  Resources: [
+    {name:'vm-prod-01',type:'microsoft.compute/virtualmachines',resourceGroup:'rg-production',location:'eastus',subscriptionId:'sub-001',tags:{Owner:'TeamA',Environment:'Production'},properties:{storageProfile:{osDisk:{encryptionSettings:{enabled:true}}}}},
+    {name:'vm-dev-01',type:'microsoft.compute/virtualmachines',resourceGroup:'rg-dev',location:'westus',subscriptionId:'sub-001',tags:{Environment:'Dev'},properties:{storageProfile:{osDisk:{encryptionSettings:{enabled:false}}}}},
+    {name:'vm-staging-01',type:'microsoft.compute/virtualmachines',resourceGroup:'rg-staging',location:'eastus',subscriptionId:'sub-002',tags:{Owner:'TeamB'},properties:{storageProfile:{osDisk:{encryptionSettings:{enabled:true}}}}},
+    {name:'storage-prod-01',type:'microsoft.storage/storageaccounts',resourceGroup:'rg-production',location:'eastus',subscriptionId:'sub-001',tags:{Owner:'TeamA',Environment:'Production'},properties:{allowBlobPublicAccess:false,supportsHttpsTrafficOnly:true}},
+    {name:'storage-dev-01',type:'microsoft.storage/storageaccounts',resourceGroup:'rg-dev',location:'westus',subscriptionId:'sub-001',tags:{},properties:{allowBlobPublicAccess:true,supportsHttpsTrafficOnly:false}},
+    {name:'storage-backup-01',type:'microsoft.storage/storageaccounts',resourceGroup:'rg-backup',location:'eastus2',subscriptionId:'sub-002',tags:{Owner:'Ops'},properties:{allowBlobPublicAccess:true,supportsHttpsTrafficOnly:true}},
+    {name:'storage-logs-01',type:'microsoft.storage/storageaccounts',resourceGroup:'rg-logs',location:'eastus',subscriptionId:'sub-002',tags:{Owner:'Security',Environment:'Production'},properties:{allowBlobPublicAccess:false,supportsHttpsTrafficOnly:true}},
+    {name:'nsg-prod-01',type:'microsoft.network/networksecuritygroups',resourceGroup:'rg-production',location:'eastus',subscriptionId:'sub-001',tags:{Owner:'TeamA'},properties:{securityRules:[{name:'allow-ssh',properties:{direction:'Inbound',access:'Allow',sourceAddressPrefix:'*',destinationPortRange:'22'}}]}},
+    {name:'nsg-dev-01',type:'microsoft.network/networksecuritygroups',resourceGroup:'rg-dev',location:'westus',subscriptionId:'sub-001',tags:{},properties:{securityRules:[{name:'allow-rdp',properties:{direction:'Inbound',access:'Allow',sourceAddressPrefix:'10.0.0.0/8',destinationPortRange:'3389'}}]}},
+    {name:'kv-prod-01',type:'microsoft.keyvault/vaults',resourceGroup:'rg-production',location:'eastus',subscriptionId:'sub-001',tags:{Owner:'Security',Environment:'Production'},properties:{enableSoftDelete:true,enablePurgeProtection:true}},
+    {name:'kv-dev-01',type:'microsoft.keyvault/vaults',resourceGroup:'rg-dev',location:'westus',subscriptionId:'sub-001',tags:{},properties:{enableSoftDelete:false,enablePurgeProtection:false}},
+  ],
+  PolicyResources: [
+    {name:'assignment-001',type:'microsoft.authorization/policyassignments',properties:{displayName:'Require HTTPS on Storage',scope:'/subscriptions/sub-001',enforcementMode:'Default',policyDefinitionName:'storage-https-required'}},
+    {name:'assignment-002',type:'microsoft.authorization/policyassignments',properties:{displayName:'Block Public Blob Access',scope:'/subscriptions/sub-001',enforcementMode:'Default',policyDefinitionName:'storage-no-public-blob'}},
+    {name:'assignment-003',type:'microsoft.authorization/policyassignments',properties:{displayName:'Require Owner Tag',scope:'/providers/Microsoft.Management/managementGroups/mg-root',enforcementMode:'DoNotEnforce',policyDefinitionName:'require-tag-owner'}},
+    {name:'state-001',type:'microsoft.policyinsights/policystates',properties:{complianceState:'NonCompliant',policyDefinitionName:'storage-https-required',resourceId:'/subscriptions/sub-001/resourceGroups/rg-dev/providers/Microsoft.Storage/storageAccounts/storage-dev-01'}},
+    {name:'state-002',type:'microsoft.policyinsights/policystates',properties:{complianceState:'Compliant',policyDefinitionName:'storage-https-required',resourceId:'/subscriptions/sub-001/resourceGroups/rg-production/providers/Microsoft.Storage/storageAccounts/storage-prod-01'}},
+    {name:'state-003',type:'microsoft.policyinsights/policystates',properties:{complianceState:'NonCompliant',policyDefinitionName:'storage-no-public-blob',resourceId:'/subscriptions/sub-001/resourceGroups/rg-dev/providers/Microsoft.Storage/storageAccounts/storage-dev-01'}},
+    {name:'state-004',type:'microsoft.policyinsights/policystates',properties:{complianceState:'NonCompliant',policyDefinitionName:'storage-no-public-blob',resourceId:'/subscriptions/sub-002/resourceGroups/rg-backup/providers/Microsoft.Storage/storageAccounts/storage-backup-01'}},
+    {name:'state-005',type:'microsoft.policyinsights/policystates',properties:{complianceState:'NonCompliant',policyDefinitionName:'require-tag-owner',resourceId:'/subscriptions/sub-001/resourceGroups/rg-dev/providers/Microsoft.Storage/storageAccounts/storage-dev-01'}},
+  ],
+  SecurityAlert: [
+    {TimeGenerated:'2024-01-15T08:23:00Z',AlertSeverity:'High',AlertName:'Unusual login from anonymous IP',ResourceId:'/subscriptions/sub-001/resourceGroups/rg-production/providers/Microsoft.Compute/virtualMachines/vm-prod-01'},
+    {TimeGenerated:'2024-01-15T10:45:00Z',AlertSeverity:'Medium',AlertName:'Potential port scanning activity',ResourceId:'/subscriptions/sub-001/resourceGroups/rg-dev/providers/Microsoft.Compute/virtualMachines/vm-dev-01'},
+    {TimeGenerated:'2024-01-15T11:00:00Z',AlertSeverity:'High',AlertName:'Storage account public access enabled',ResourceId:'/subscriptions/sub-001/resourceGroups/rg-dev/providers/Microsoft.Storage/storageAccounts/storage-dev-01'},
+    {TimeGenerated:'2024-01-15T12:30:00Z',AlertSeverity:'Low',AlertName:'VM without endpoint protection',ResourceId:'/subscriptions/sub-002/resourceGroups/rg-staging/providers/Microsoft.Compute/virtualMachines/vm-staging-01'},
+    {TimeGenerated:'2024-01-15T14:00:00Z',AlertSeverity:'Medium',AlertName:'Key Vault soft delete not enabled',ResourceId:'/subscriptions/sub-001/resourceGroups/rg-dev/providers/Microsoft.KeyVault/vaults/kv-dev-01'},
+  ]
+};
+
+export const KQL_SCHEMA = {
+  Resources: ['name','type','resourceGroup','location','subscriptionId','tags','properties'],
+  PolicyResources: ['name','type','properties.displayName','properties.complianceState','properties.policyDefinitionName','properties.scope','properties.enforcementMode'],
+  SecurityAlert: ['TimeGenerated','AlertSeverity','AlertName','ResourceId'],
+};
+
+export const KQL_EXERCISES = [
+  {title:'Find all Storage Accounts',desc:'Write a query to list all resources of type microsoft.storage/storageaccounts. Show the name, resourceGroup, and location.',hint:'Resources\n| where type == "microsoft.storage/storageaccounts"\n| project name, resourceGroup, location',solution:'Resources\n| where type == "microsoft.storage/storageaccounts"\n| project name, resourceGroup, location'},
+  {title:'Find Storage Accounts with public blob access enabled',desc:'Find all storage accounts where allowBlobPublicAccess is true. Show name, resourceGroup, subscriptionId.',hint:'Filter by type and then by properties.allowBlobPublicAccess == true',solution:'Resources\n| where type == "microsoft.storage/storageaccounts"\n| where properties.allowBlobPublicAccess == true\n| project name, resourceGroup, subscriptionId'},
+  {title:'List all VMs',desc:'Find all virtual machines. Show name, resourceGroup, location.',hint:'Resources\n| where type == "microsoft.compute/virtualmachines"',solution:'Resources\n| where type == "microsoft.compute/virtualmachines"\n| project name, resourceGroup, location'},
+  {title:'Find VMs without encryption',desc:'Find virtual machines where encryption is not enabled. Check properties.storageProfile.osDisk.encryptionSettings.enabled != true.',hint:'Filter VMs where the encryptionSettings.enabled is not true',solution:'Resources\n| where type == "microsoft.compute/virtualmachines"\n| where properties.storageProfile.osDisk.encryptionSettings.enabled != true\n| project name, resourceGroup, location'},
+  {title:'Find resources missing the Owner tag',desc:'Find all resources where the Owner tag is missing or empty.',hint:'Use isnull(tags.Owner) to check for missing tags',solution:'Resources\n| where isnull(tags.Owner) or tags.Owner == ""\n| project name, type, resourceGroup, subscriptionId'},
+  {title:'Show all non-compliant policy states',desc:'From PolicyResources, find all records where complianceState is NonCompliant.',hint:'PolicyResources\n| where type == "microsoft.policyinsights/policystates"\n| where properties.complianceState == "NonCompliant"',solution:'PolicyResources\n| where type == "microsoft.policyinsights/policystates"\n| where properties.complianceState == "NonCompliant"\n| project name, properties.policyDefinitionName, properties.complianceState'},
+  {title:'List all Policy Assignments',desc:'Show all policy assignments with their display name, scope, and enforcement mode.',hint:'PolicyResources\n| where type == "microsoft.authorization/policyassignments"',solution:'PolicyResources\n| where type == "microsoft.authorization/policyassignments"\n| project name, displayName = properties.displayName, scope = properties.scope, enforcementMode = properties.enforcementMode'},
+  {title:'Count resources by type',desc:'Summarize and count how many resources exist for each type.',hint:'Use summarize Count = count() by type',solution:'Resources\n| summarize Count = count() by type\n| order by Count desc'},
+  {title:'Show Defender alerts by severity',desc:'From SecurityAlert, show alert counts grouped by severity.',hint:'SecurityAlert\n| summarize AlertCount = count() by AlertSeverity',solution:'SecurityAlert\n| summarize AlertCount = count() by AlertSeverity, AlertName\n| order by AlertSeverity asc'},
+  {title:'Find NSGs with inbound rules open to internet',desc:'Find Network Security Groups that have inbound rules allowing traffic from * or Internet.',hint:'Filter NSGs and check securityRules for Inbound Allow rules with sourceAddressPrefix of *',solution:'Resources\n| where type == "microsoft.network/networksecuritygroups"\n| project name, resourceGroup, subscriptionId'},
+];

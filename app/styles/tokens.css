@@ -1,0 +1,118 @@
+/* ════════════════════════════════════════════════════
+   DESIGN TOKENS — light + dark
+   Set on <html> via the manual toggle (data-theme) or
+   the @media (prefers-color-scheme) query when no toggle.
+   ════════════════════════════════════════════════════ */
+
+:root {
+  /* Light surfaces */
+  --bg:        #f5f4f0;
+  --surface:   #fff;
+  --surface2:  #f0efe9;
+  --surface3:  #e8e6df;
+  --border:    #e2e0d8;
+  --border2:   #cccac0;
+
+  /* Light text */
+  --text:  #1a1916;
+  --text2: #6b6960;
+  --text3: #9b9990;
+
+  /* Brand colors (per cloud) — kept identical across themes */
+  --green:        #1D9E75;
+  --green-light:  #e1f5ee;
+  --green-dark:   #0f6e56;
+  --amber:        #BA7517;
+  --amber-light:  #faeeda;
+  --amber-dark:   #633806;
+  --blue:         #185FA5;
+  --blue-light:   #e6f1fb;
+  --blue-dark:    #0C447C;
+  --purple:       #534AB7;
+  --purple-light: #EEEDFE;
+  --purple-dark:  #3C3489;
+  --red:          #A32D2D;
+  --red-light:    #fcebeb;
+
+  /* Geometry / type */
+  --radius:       10px;
+  --radius-sm:    6px;
+  --sidebar-w:    260px;
+  --bottomnav-h:  60px;
+  --font:  'DM Sans', system-ui, sans-serif;
+  --mono:  'DM Mono', ui-monospace, monospace;
+
+  /* Shadows */
+  --shadow-sm: 0 1px 2px rgba(15,15,20,0.04);
+  --shadow:    0 4px 16px rgba(15,15,20,0.06);
+}
+
+/* Dark theme — manual toggle */
+[data-theme="dark"] {
+  --bg:        #0e1015;
+  --surface:   #171a23;
+  --surface2:  #1f2230;
+  --surface3:  #262a3a;
+  --border:    #2a2f40;
+  --border2:   #3a4156;
+
+  --text:  #e8eaf2;
+  --text2: #a8acbb;
+  --text3: #6b7088;
+
+  /* Lighter, less-saturated brand tints for dark surfaces */
+  --green-light:  #103128;
+  --green-dark:   #6fdcb6;
+  --amber-light:  #2c1f0d;
+  --amber-dark:   #f0c585;
+  --blue-light:   #0d2238;
+  --blue-dark:    #82b4e8;
+  --purple-light: #1c1838;
+  --purple-dark:  #b1a7f0;
+  --red-light:    #2a0f0f;
+
+  --shadow-sm: 0 1px 2px rgba(0,0,0,0.4);
+  --shadow:    0 4px 16px rgba(0,0,0,0.4);
+}
+
+/* Auto-dark when no explicit toggle and OS prefers dark */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme]) {
+    --bg:        #0e1015;
+    --surface:   #171a23;
+    --surface2:  #1f2230;
+    --surface3:  #262a3a;
+    --border:    #2a2f40;
+    --border2:   #3a4156;
+    --text:  #e8eaf2;
+    --text2: #a8acbb;
+    --text3: #6b7088;
+    --green-light:  #103128;
+    --green-dark:   #6fdcb6;
+    --amber-light:  #2c1f0d;
+    --amber-dark:   #f0c585;
+    --blue-light:   #0d2238;
+    --blue-dark:    #82b4e8;
+    --purple-light: #1c1838;
+    --purple-dark:  #b1a7f0;
+    --red-light:    #2a0f0f;
+  }
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; }
+body {
+  font-family: var(--font);
+  background: var(--bg);
+  color: var(--text);
+  font-size: 14px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+a { color: var(--green); text-decoration: none; }
+a:hover { text-decoration: underline; }
+code { font-family: var(--mono); font-size: 12.5px; }
+button { font: inherit; }
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 3px; }

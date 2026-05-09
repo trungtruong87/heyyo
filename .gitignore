@@ -1,0 +1,17 @@
+# Local Claude config — per-machine, not application code
+.claude/
+
+# Transient Playwright/MCP artifacts (logs, page snapshots)
+.playwright-mcp/
+
+# OS metadata
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Local env / secrets
+.env
+.env.local
+.env.*.local

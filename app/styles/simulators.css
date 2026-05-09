@@ -1,0 +1,286 @@
+/* ════════════════════════════════════════════════════
+   SIMULATORS — shared styles for the 9 practice apps
+   (KQL, Azure Policy, SCP+IAM, Config, Control Tower,
+   Defender, Runbook, Terraform Sim, Scenarios)
+   ════════════════════════════════════════════════════ */
+
+/* ─── Light-theme panels ─── */
+.panel {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 1.1rem 1.25rem;
+  margin-bottom: 10px;
+}
+.panel.aws-theme   { background: var(--amber-light); border-color: #f0d080; }
+.panel.azure-theme { background: var(--blue-light);  border-color: #9fc5f0; }
+.panel.tf-theme    { background: var(--purple-light); border-color: #b9b3e8; }
+
+.two-col   { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+.three-col { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 1rem; }
+@media (max-width: 768px) { .two-col, .three-col { grid-template-columns: 1fr; } }
+
+.provider-pill {
+  padding: 3px 10px;
+  border-radius: 3px;
+  font-size: 11px; font-weight: 700;
+  letter-spacing: .05em;
+}
+.aws-pill   { background: var(--amber-light); color: var(--amber); }
+.azure-pill { background: var(--blue-light);  color: var(--blue); }
+.tf-pill    { background: var(--purple-light); color: var(--purple); }
+
+/* ─── Decision result blocks ─── */
+.result {
+  border-radius: var(--radius);
+  padding: 1.1rem 1.25rem;
+  margin-top: 1rem;
+  border: 1px solid;
+}
+.result-allow   { background: var(--green-light); border-color: var(--green); }
+.result-deny    { background: var(--red-light);   border-color: var(--red); }
+.result-audit   { background: var(--amber-light); border-color: var(--amber); }
+.result-neutral { background: var(--surface2);    border-color: var(--border2); }
+.result-title {
+  font-size: 18px; font-weight: 700;
+  margin-bottom: 8px;
+  display: flex; align-items: center; gap: 8px;
+}
+.result-allow  .result-title { color: var(--green-dark); }
+.result-deny   .result-title { color: var(--red); }
+.result-audit  .result-title { color: var(--amber); }
+.result-body { font-size: 13px; color: var(--text2); line-height: 1.75; }
+
+.decision-path { list-style: none; padding: 0; margin-top: 10px; }
+.decision-path li {
+  padding: 5px 0 5px 24px;
+  position: relative;
+  font-size: 13px;
+  color: var(--text2);
+  line-height: 1.6;
+  border-bottom: 1px solid var(--border);
+}
+.decision-path li:last-child { border-bottom: none; }
+.decision-path li::before { position: absolute; left: 0; font-size: 13px; }
+.dp-allow::before { content: '✅'; }
+.dp-deny::before  { content: '🔴'; }
+.dp-info::before  { content: 'ℹ️'; }
+.dp-warn::before  { content: '⚠️'; }
+
+/* ─── Status tags ─── */
+.status-tag {
+  padding: 2px 8px;
+  border-radius: 3px;
+  font-size: 11px; font-weight: 700;
+  display: inline-block;
+}
+.st-compliant    { background: var(--green-light); color: var(--green-dark); }
+.st-noncompliant { background: var(--red-light);   color: var(--red); }
+.st-deny         { background: var(--red-light);   color: var(--red); }
+.st-audit        { background: var(--amber-light); color: var(--amber-dark); }
+
+/* ─── Sim table ─── */
+.sim-table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+.sim-table th {
+  padding: 8px 12px; text-align: left;
+  font-size: 11px; font-weight: 700;
+  text-transform: uppercase; letter-spacing: .06em;
+  color: var(--text3);
+  border-bottom: 1px solid var(--border);
+  background: var(--surface2);
+}
+.sim-table td {
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+  color: var(--text2);
+  vertical-align: middle;
+}
+.sim-table tr:last-child td { border-bottom: none; }
+.sim-table tr:hover td { background: var(--surface2); }
+.sim-table .edit-btn {
+  padding: 2px 7px;
+  border-radius: 3px;
+  border: 1px solid var(--border2);
+  background: none;
+  color: var(--text2);
+  font-size: 11px;
+  cursor: pointer;
+  font-family: var(--font);
+}
+
+/* ─── KQL simulator ─── */
+.data-browser { font-size: 13px; }
+.exercise-bar {
+  background: var(--blue-light);
+  border: 1px solid #9fc5f0;
+  border-radius: var(--radius);
+  padding: 1rem 1.15rem;
+  margin-bottom: 1rem;
+}
+.exercise-bar .ex-title { font-size: 12px; font-weight: 700; color: var(--blue); margin-bottom: 3px; }
+.exercise-bar .ex-desc { font-size: 13px; color: var(--text2); line-height: 1.5; margin-bottom: 8px; }
+.exercise-bar .ex-progress { font-size: 11px; color: var(--text3); }
+.kql-hint-box {
+  background: var(--amber-light);
+  border: 1px solid #f0d080;
+  border-radius: var(--radius-sm);
+  padding: 10px 13px;
+  margin-bottom: 10px;
+  font-size: 13px;
+  color: var(--amber-dark);
+  display: none;
+}
+.kql-hint-box.show { display: block; }
+.kql-tbl-name {
+  padding: 5px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+  color: var(--text2);
+  font-family: var(--mono);
+  font-size: 12px;
+  transition: all .15s;
+}
+.kql-tbl-name:hover { background: var(--surface2); color: var(--text); }
+.kql-tbl-name.open { background: var(--blue-light); color: var(--blue); }
+.kql-tbl-cols { display: none; padding: 4px 8px 4px 20px; font-size: 11px; color: var(--text3); line-height: 1.8; }
+.kql-tbl-cols.show { display: block; }
+
+/* ─── Control Tower ─── */
+.ct-org { font-size: 13px; }
+.ct-ou {
+  background: var(--amber-light);
+  border: 1px solid #f0d080;
+  border-radius: 6px;
+  padding: 10px 12px;
+  margin-bottom: 8px;
+}
+.ct-ou-name {
+  font-size: 12px; font-weight: 700;
+  color: var(--amber-dark);
+  margin-bottom: 6px;
+  display: flex; align-items: center; gap: 6px;
+}
+.ct-account {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 6px 10px;
+  margin-bottom: 4px;
+  font-size: 12px;
+  color: var(--text2);
+  display: flex; align-items: center; gap: 6px;
+}
+.ct-gr-badge { padding: 2px 7px; border-radius: 3px; font-size: 11px; font-weight: 700; }
+.gr-prev { background: var(--red-light);   color: var(--red); }
+.gr-det  { background: var(--amber-light); color: var(--amber-dark); }
+.gr-pro  { background: var(--blue-light);  color: var(--blue); }
+
+/* ─── Runbook console ─── */
+.rb-console {
+  background: #1a1a2e;
+  border: 1px solid var(--border2);
+  border-radius: var(--radius-sm);
+  padding: 1rem;
+  font-family: var(--mono);
+  font-size: 12px;
+  line-height: 1.8;
+  min-height: 180px;
+  overflow-y: auto;
+  max-height: 280px;
+}
+.rb-output-line { padding: 1px 0; }
+.rb-info    { color: #8b9dc3; }
+.rb-success { color: #00c875; }
+.rb-error   { color: #ff6b6b; }
+.rb-warn    { color: #ffd60a; }
+.rb-data    { color: #c9d1d9; }
+
+/* ─── Terraform output ─── */
+.tf-output {
+  background: #1a1a2e;
+  border: 1px solid var(--border2);
+  border-radius: var(--radius-sm);
+  padding: 1rem;
+  font-family: var(--mono);
+  font-size: 12px;
+  line-height: 1.8;
+  min-height: 150px;
+}
+.tf-add     { color: #3fb950; }
+.tf-change  { color: #ffd60a; }
+.tf-destroy { color: #ff6b6b; }
+.tf-info    { color: #8b9dc3; }
+.tf-bold    { font-weight: 700; }
+
+/* ─── Defender — secure score ring ─── */
+.secure-score-ring { width: 110px; height: 110px; position: relative; margin: 0 auto; }
+.secure-score-ring svg { width: 100%; height: 100%; }
+.score-center {
+  position: absolute; top: 50%; left: 50%;
+  transform: translate(-50%, -50%);
+  text-align: center;
+}
+.score-display { font-size: 26px; font-weight: 700; color: var(--text); }
+.score-label-sm, .score-label { font-size: 10px; color: var(--text3); }
+#score-arc { stroke: var(--blue) !important; transition: stroke-dashoffset .6s ease; }
+
+/* ─── Recommendations ─── */
+.rec-item {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 10px 12px;
+  margin-bottom: 6px;
+  display: flex; align-items: center; gap: 10px;
+  cursor: pointer;
+  transition: border-color .15s;
+}
+.rec-item:hover { border-color: var(--border2); }
+.rec-item.fixed { opacity: .5; }
+.rec-sev { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+.sev-high { background: var(--red); }
+.sev-med  { background: var(--amber); }
+.sev-low  { background: var(--green); }
+.rec-title { font-size: 13px; color: var(--text); flex: 1; }
+.rec-score { font-size: 11px; color: var(--text3); white-space: nowrap; }
+
+/* ─── Progress bar (sim) ─── */
+.progress-bar {
+  height: 4px;
+  background: var(--border);
+  border-radius: 2px;
+  overflow: hidden;
+  margin-bottom: 1rem;
+}
+.progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--blue), var(--green));
+  border-radius: 2px;
+  transition: width .3s;
+}
+
+/* ─── Scenario cards ─── */
+.scenario-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 1rem;
+  margin-bottom: 8px;
+  cursor: pointer;
+  transition: all .15s;
+}
+.scenario-card:hover { border-color: var(--green); }
+.scenario-card.active-sc { border-color: var(--blue); background: var(--blue-light); }
+.step-list { list-style: none; padding: 0; counter-reset: step; }
+.step-list li {
+  padding: 8px 0;
+  border-bottom: 1px solid var(--border);
+  font-size: 13px; color: var(--text2);
+  line-height: 1.6;
+  counter-increment: step;
+}
+.step-list li:last-child { border-bottom: none; }
+
+/* sim info / warn boxes (when used inside dark-theme contexts elsewhere) */
+.info-box.sim { background: var(--blue-light);  border-left-color: var(--blue);  color: var(--blue-dark); }
+.warn-box.sim { background: var(--amber-light); border-left-color: var(--amber); color: var(--amber-dark); }

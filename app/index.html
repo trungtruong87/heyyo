@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>DevOps Security Hub</title>
+  <meta name="description" content="A study hub for AWS / Azure / Terraform DevOps security: 14-day plan, flashcards, quiz, and 9 hands-on simulators.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+
+  <link rel="stylesheet" href="./styles/tokens.css">
+  <link rel="stylesheet" href="./styles/layout.css">
+  <link rel="stylesheet" href="./styles/components.css">
+  <link rel="stylesheet" href="./styles/pages.css">
+  <link rel="stylesheet" href="./styles/simulators.css">
+</head>
+<body>
+
+<!-- Mobile top bar -->
+<div class="topbar">
+  <div class="topbar-logo">
+    <div class="topbar-logo-icon">🛡️</div>
+    <span>DevOps Security Hub</span>
+  </div>
+  <button class="topbar-btn" id="cmdk-btn-mobile" aria-label="Search">🔍</button>
+  <button class="topbar-btn" id="theme-btn-mobile" aria-label="Toggle theme">🌙</button>
+</div>
+
+<div class="app">
+
+  <!-- Desktop sidebar -->
+  <aside class="sidebar" id="sidebar">
+    <div class="sb-logo">
+      <div class="sb-logo-icon">🛡️</div>
+      <div>
+        <div class="sb-logo-name">DevOps Security Hub</div>
+        <div class="sb-logo-sub">AWS · Azure · Terraform</div>
+      </div>
+    </div>
+    <nav class="sb-body" id="sb-nav"><!-- rendered by main.js --></nav>
+    <div class="sb-footer">
+      <button id="cmdk-btn" type="button">
+        <span>🔍</span><span>Search</span><kbd>⌘K</kbd>
+      </button>
+      <button id="theme-btn" type="button">🌙 Dark</button>
+    </div>
+  </aside>
+
+  <!-- Pages render here -->
+  <main class="main" id="app-root"><!-- router injects current page --></main>
+</div>
+
+<!-- Mobile bottom nav + sheet -->
+<nav class="mobile-nav" id="mobile-nav"><!-- rendered by main.js --></nav>
+<div class="mn-sheet" id="mn-sheet"></div>
+
+<!-- Search modal (Cmd-K) -->
+<div class="modal-overlay" id="search-modal" role="dialog" aria-modal="true" aria-label="Search">
+  <div class="modal modal-search" role="document">
+    <input type="search" id="search-input" placeholder="Search topics, flashcards, scenarios…" autocomplete="off" spellcheck="false">
+    <ul class="search-results" id="search-results"></ul>
+    <div class="search-empty" id="search-empty">Start typing to search…</div>
+  </div>
+</div>
+
+<script type="module" src="./src/main.js"></script>
+
+<!-- Mobile top-bar handlers (small enough to inline) -->
+<script type="module">
+  import { openSearch } from './src/core/search.js';
+  document.getElementById('cmdk-btn-mobile')?.addEventListener('click', () => openSearch());
+  document.getElementById('theme-btn-mobile')?.addEventListener('click', () => {
+    document.getElementById('theme-btn')?.click();
+  });
+</script>
+
+</body>
+</html>
