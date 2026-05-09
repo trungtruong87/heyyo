@@ -524,7 +524,9 @@
 .fnd-panels.grid-1 { display: block; margin: 14px 0; }
 @media (max-width: 900px) { .fnd-panels.grid-2 { grid-template-columns: 1fr; } }
 
-.fnd-panel { padding: 18px 20px; }
+.fnd-panel { padding: 18px 20px; min-width: 0; overflow-wrap: anywhere; }
+.fnd-panel .pt { flex-wrap: wrap; }
+.fnd-panel code { overflow-wrap: anywhere; word-break: break-word; }
 .fnd-panel-aws   { border-top: 3px solid var(--amber); }
 .fnd-panel-azure { border-top: 3px solid var(--blue); }
 .fnd-panel-tf    { border-top: 3px solid var(--purple); }
