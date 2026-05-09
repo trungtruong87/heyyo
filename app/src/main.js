@@ -36,10 +36,11 @@ import * as t8 from './pages/tickets/t8.js';
 import * as t9 from './pages/tickets/t9.js';
 
 // Reference
-import * as wikiPage      from './pages/reference/wiki.js';
-import * as decisionsPage from './pages/reference/decisions.js';
-import * as vaultPage     from './pages/reference/vault.js';
-import * as quickrefPage  from './pages/reference/quickref.js';
+import * as wikiPage       from './pages/reference/wiki.js';
+import * as decisionsPage  from './pages/reference/decisions.js';
+import * as vaultPage      from './pages/reference/vault.js';
+import * as quickrefPage   from './pages/reference/quickref.js';
+import * as cheatsheetPage from './pages/reference/cheatsheet.js';
 
 // Lab Bench (kept simulators with real eval logic — used inside ticket steps)
 import * as scpSim      from './pages/practice/scp.js';
@@ -85,6 +86,7 @@ const NAV = [
       { route: '/reference/decisions',     label: 'Decision trees',            icon: '🌳', mod: decisionsPage,   cloud: 'home' },
       { route: '/reference/vault',         label: 'Snippet Vault',             icon: '💼', mod: vaultPage,       cloud: 'home' },
       { route: '/reference/quickref',      label: 'Quick Reference',           icon: '⚡', mod: quickrefPage,     cloud: 'both' },
+      { route: '/reference/cheatsheet',    label: 'A4 Cheatsheet',             icon: '📄', mod: cheatsheetPage,  cloud: 'both' },
     ],
   },
   {
