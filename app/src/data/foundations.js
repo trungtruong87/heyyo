@@ -37,7 +37,7 @@ export const FOUNDATIONS = [
           '<b>Management account</b> — the billing root. Never run workloads here. It owns Organizations.',
           '<b>Member accounts</b> — workload containers. Each has its own IAM, billing rolls up to management.',
           '<b>OUs</b> — folders inside the org. Can nest up to 5 levels deep. Common shape: <code>Root → Security, Sandbox, Workloads → Prod, NonProd</code>.',
-          '<b>Inheritance</b> — controls attached to an OU apply to every account inside it, recursively. The smallest blast radius wins; if Prod has a stricter SCP than Workloads, both apply.',
+          '<b>Inheritance</b> — a control attached to an OU installs a checkpoint that every account beneath it must pass. Checkpoints stack: a deeper account has to clear its own + every ancestor\'s. A stricter SCP on Prod doesn\'t replace the Workloads SCP — both apply, and what you experience is the union.',
           '<b>Service control policies (SCPs)</b> — covered Day 2. They attach to root, OU, or account, and set the maximum permissions allowed.',
         ],
         example: `Sample tree:
@@ -61,7 +61,7 @@ Root
           '<b>Tenant Root group</b> — the singular top of the tree. One per Entra ID tenant.',
           '<b>Management Group (MG)</b> — folder for grouping subscriptions. Up to 6 levels deep below the root. Same idea as an OU.',
           '<b>Subscription</b> — workload + billing container. Resource Groups live inside subscriptions; resources live inside Resource Groups.',
-          '<b>Inheritance</b> — Azure Policy assigned at a MG applies to every sub beneath it. Lower scopes can ADD more policy but cannot weaken what was inherited.',
+          '<b>Inheritance</b> — a policy assigned at a MG installs a checkpoint every sub beneath it must pass. A sub-level assignment ADDS another checkpoint; it cannot remove or relax one set above. Same shape as AWS, different vocabulary.',
           '<b>Subscription vending</b> — the equivalent of "give me a new account" is "give me a new subscription." Usually automated via Terraform/Bicep so the new sub lands in the right MG with baseline policies.',
         ],
         example: `Sample tree:
@@ -88,8 +88,28 @@ Tenant Root
    │Account │      │  Sub    │   ← workloads live here
    │  /Sub  │      │         │
    └────────┘      └─────────┘`,
+    conceptDive: {
+      title: 'Inheritance & blast radius — the checkpoint model',
+      body: `
+        <p><strong>Picture every action as a passenger walking to a seat.</strong> The org tree
+        is a hallway with one checkpoint installed at every node the passenger walks past.</p>
+        <ul>
+          <li>A checkpoint at the <strong>Root</strong> sees every action in the org — biggest blast radius.</li>
+          <li>A checkpoint on the <strong>Workloads OU</strong> sees only actions inside Workloads — medium blast radius.</li>
+          <li>A checkpoint on <strong>one account</strong> sees only that account — tiniest blast radius.</li>
+        </ul>
+        <p><strong>Any checkpoint can say "no". None can override another's "no".</strong> So a child OU's stricter
+        rule never <em>loosens</em> the parent's rule — it just installs one more gate on top of it. The
+        deeper you are in the tree, the more gates the action has to clear.</p>
+        <p class="fnd-concept-callout"><strong>Common trap:</strong> "More specific rule wins" works in CSS, IAM,
+        file ACLs. Not here. In org-tree policies the more specific rule <em>stacks</em>, it doesn't override.
+        Restrictions accumulate.</p>
+        <p><strong>So when someone asks "what's the blast radius?"</strong> they're asking <em>which leaves does this
+        checkpoint cover?</em> Attach high for broad coverage, low for narrow coverage — and remember a lower
+        attach point can only add restrictions, not remove the ones already inherited.</p>`,
+    },
     handsOn: {
-      intro: 'Two short exercises to lock in the tree mental model. Answer in the textareas; reveal the model answer when ready.',
+      intro: 'Three short exercises to lock in the tree mental model. Answer in the textareas; reveal the model answer when ready.',
       steps: [
         {
           label: 'Q1',
@@ -112,10 +132,28 @@ Tenant Root
 <p>Shape is identical: a tree with rules attached at nodes that inherit down. Only the names differ.</p>`,
           starter: '(a) AWS Org root → \n(b) OU → \n(c) Member account → \n(d) SCP attach point → ',
         },
+        {
+          label: 'Q3',
+          question: 'Walk an action through the checkpoint model. The sample AWS tree has SCPs attached at three places: <strong>Root</strong> ("deny non-allowed regions"), <strong>Workloads OU</strong> ("deny untagged volumes"), <strong>Prod OU</strong> ("deny IAM user creation"). A user in a <em>Prod</em> account tries to <code>iam:CreateUser</code> in <code>us-east-1</code>. How many checkpoints does the action hit, and what happens at each one?',
+          hint: 'Trace the path Root → Workloads OU → Prod OU → Prod account. At each step ask: does <em>this</em> checkpoint deny <em>this</em> action?',
+          answer: `<p>The action passes through <strong>three checkpoints</strong> on its way to the Prod account:</p>
+<ol>
+<li><strong>Root checkpoint</strong> — "deny non-allowed regions." The action is in <code>us-east-1</code>, which is allowed. Checkpoint waves it through.</li>
+<li><strong>Workloads OU checkpoint</strong> — "deny untagged volumes." The action is <code>iam:CreateUser</code>, not a volume action. Checkpoint waves it through.</li>
+<li><strong>Prod OU checkpoint</strong> — "deny IAM user creation." Direct hit. Checkpoint says <strong>no</strong>. Action is denied.</li>
+</ol>
+<p><strong>Key observations:</strong></p>
+<ul>
+<li>The action only got <em>checked</em> by checkpoints on its path — sibling OUs (Sandbox, NonProd, Security) have their own checkpoints, but those don't apply because the action isn't going there.</li>
+<li>It only takes <strong>one</strong> "no" anywhere on the path to deny. The Root and Workloads OU checkpoints saying "yes" don't help.</li>
+<li>If the same user tried <code>iam:CreateUser</code> from a <em>NonProd</em> account, the Prod OU checkpoint isn't on the path, so the call would succeed (Root and Workloads OU don't deny it). Same action, different blast radius — different outcome.</li>
+</ul>`,
+          starter: 'Checkpoint 1 (Root):\nCheckpoint 2 (Workloads OU):\nCheckpoint 3 (Prod OU):\n\nWhat happens overall:',
+        },
       ],
       selfCheck: [
         'I can name the AWS shape (Org → OU → account) and the Azure shape (Tenant Root → MG → subscription).',
-        'I can explain "blast radius" in one sentence.',
+        'I can explain "blast radius" using the checkpoint picture (a rule covers the leaves under its attach point).',
         'I know rules attached high flow DOWN; rules at a leaf only apply to that leaf.',
         'I know inheritance is additive — a child cannot loosen an inherited rule.',
       ],
@@ -124,7 +162,7 @@ Tenant Root
       'Both clouds use a tree: Company → folders → accounts/subs.',
       'AWS calls the folders OUs and lives inside AWS Organizations. Azure calls them Management Groups.',
       'Rules attached high in the tree flow DOWN. Rules at a leaf apply only to that leaf.',
-      'Lowest blast radius wins: if a child has a stricter rule, both parent and child apply (you cannot "loosen" via a child).',
+      'Every rule on the path stacks. A child cannot loosen a parent — it can only add another checkpoint. The strictest experienced outcome is the union.',
       'You will work the tree daily — every other concept (SCPs, Azure Policy, Control Tower, Defender) hangs off it.',
     ],
     talkingPoints: [
@@ -168,7 +206,7 @@ Tenant Root
           '<b>Two effects only:</b> <code>Allow</code> and <code>Deny</code>. Most real SCPs use <code>Deny</code> with <code>NotAction</code> for allowlists.',
           '<b>Attach points:</b> Root, OU, or member account. <b>Cannot</b> attach to the management account itself.',
           '<b>Evaluation:</b> An action is allowed only if (every SCP on the path allows it) AND (IAM allows it). If the SCP path denies, IAM can\'t override.',
-          '<b>SCP vs IAM Policy</b> — <i>this is the question your lead will ask you.</i> SCPs are GUARDRAILS that limit what the account can ever do. IAM policies are PERMISSIONS that grant specific users/roles specific actions. Both must allow; either can deny.',
+          '<b>SCP vs IAM Policy</b> — <i>this is the question your lead will ask you.</i> Think of them as <em>two parallel checkpoint lines</em> at the same point. SCP asks "is this allowed in this account at all?" IAM asks "is this person allowed to do it?" Both lines must wave the action through; either can deny. SCPs cap what\'s possible — they grant nothing.',
           '<b>Common patterns:</b> deny region restrictions, deny "leave organization", deny CloudTrail off, deny root-user actions, deny IAM-user creation.',
         ],
         example: `// Deny everything outside us-east-1 and us-west-2
@@ -203,7 +241,7 @@ Tenant Root
           '<b>Definition vs Assignment:</b> the JSON is a <i>definition</i>. It does nothing until you <i>assign</i> it to a scope.',
           '<b>Initiative</b> — a bundle of related policy definitions. Microsoft Cloud Security Benchmark (MCSB) is itself a built-in initiative.',
           '<b>Exemption</b> — time-bound waiver for a specific resource or scope. Lets you say "this storage account is grandfathered until 2026-12-31."',
-          '<b>Inheritance:</b> a policy assigned at a MG flows down to every sub. Subscription-level assignments add to (never weaken) MG-level ones.',
+          '<b>Inheritance:</b> a policy at a MG installs a checkpoint that every sub beneath it must pass — same picture as Day 1. A subscription-level assignment adds <em>another</em> checkpoint; it can never remove or relax the one above. Restrictions stack.',
         ],
         example: `// Deny storage accounts with public blob access
 {
@@ -237,6 +275,29 @@ Tenant Root
               └──────── BOTH must say YES ───┘
                             │
                        action runs`,
+    conceptDive: {
+      title: 'SCP + IAM — two checkpoint lines, same picture as Day 1',
+      body: `
+        <p><strong>Same checkpoint model as Day 1, with one twist.</strong> Day 1 stacked checkpoints <em>vertically</em>
+        down the org tree (Root → OU → account). Today's twist: at the account itself, the action has to clear
+        <strong>two parallel checkpoint lines</strong> before it runs.</p>
+        <ul>
+          <li><strong>The SCP line</strong> — the checkpoints inherited down the OU tree. "Is this action even
+          allowed in this account?" These are guardrails; they grant nothing.</li>
+          <li><strong>The IAM line</strong> — the user/role's own policies. "Is <em>this person</em> allowed
+          to do this thing?" These grant specific permissions.</li>
+        </ul>
+        <p><strong>Both lines must say "yes". Either can say "no".</strong> An IAM policy granting <code>ec2:*</code>
+        cannot un-deny an SCP block, and an SCP allowing everything doesn't grant anything to a user who has no
+        IAM permission. The picture is the same as Day 1 — stacked gates, none can override another — just
+        applied at a different layer.</p>
+        <p class="fnd-concept-callout"><strong>If you take only one thing from Day 2:</strong> when a call fails
+        with <code>AccessDenied</code>, ask "which checkpoint blocked it?" The error annotation tells you: an
+        explicit deny in an SCP, an implicit deny because no IAM policy granted it, or a Resource policy that
+        doesn't trust the caller.</p>
+        <p>On Azure the same picture: Azure Policy at the MG/sub level is the inherited checkpoint line; Azure
+        RBAC is the per-principal line. Both must clear.</p>`,
+    },
     handsOn: {
       intro: 'Two short exercises on guardrails. Use the lab benches if you want to play first; reveal the model answer when ready.',
       steps: [

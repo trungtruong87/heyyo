@@ -145,6 +145,12 @@ export function renderFoundation(id) {
           <pre>${escapeHtml(f.diagram)}</pre>
         </div>` : ''}
 
+      ${f.conceptDive ? `
+        <div class="card fnd-concept">
+          <span class="layer-label">Concept dive — ${escapeHtml(f.conceptDive.title)}</span>
+          <div class="fnd-concept-body">${f.conceptDive.body}</div>
+        </div>` : ''}
+
       ${renderHandsOnCard(f)}
 
       <div class="card fnd-recap">
