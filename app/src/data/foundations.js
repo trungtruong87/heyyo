@@ -89,12 +89,36 @@ Tenant Root
    │  /Sub  │      │         │
    └────────┘      └─────────┘`,
     handsOn: {
-      prompt: `Sketch your imagined org tree on paper. 1 root, 2-4 OUs/MGs (e.g.,
-               Sandbox, NonProd, Prod, Security), and 1-2 leaf accounts/subs per
-               branch. Then ask: if I attach a "deny public storage" rule at the
-               Workloads OU/MG, which leaves does it cover? Which does it MISS?`,
-      artifactKind: 'note',
-      template: `My org tree:\n\nRoot\n├── \n├── \n└── Workloads\n    ├── NonProd\n    └── Prod\n\nIf I attach a rule at Workloads:\n - It covers: \n - It misses: `,
+      intro: 'Two short exercises to lock in the tree mental model. Answer in the textareas; reveal the model answer when ready.',
+      steps: [
+        {
+          label: 'Q1',
+          question: 'Given the sample tree in the AWS panel (<code>Root → Security OU, Sandbox OU, Workloads OU → NonProd, Prod</code>): if you attach a "deny public storage" rule at the <strong>Workloads</strong> OU, which OUs/accounts does it COVER, and which does it MISS?',
+          hint: 'Rules flow DOWN the tree. Siblings and parents are untouched.',
+          answer: `<p><strong>Covers</strong> — everything <em>under</em> Workloads: the NonProd OU, the Prod OU, and every account inside either of them.</p>
+<p><strong>Misses</strong> — Sandbox OU (sibling of Workloads), Security OU (sibling), the management/root account itself, and any future OU added outside the Workloads sub-tree.</p>
+<p>Lesson: attach high if you want broad coverage; attach low if you want narrow scope. "Blast radius" = which leaves the rule covers.</p>`,
+          starter: 'It covers:\n  - \n\nIt misses:\n  - ',
+        },
+        {
+          label: 'Q2',
+          question: 'Translate the AWS vocabulary to Azure: what is the Azure equivalent of (a) AWS Organization root, (b) Organizational Unit (OU), (c) member account, (d) the place you attach an SCP?',
+          answer: `<ul>
+<li>(a) AWS Organization root → <strong>Tenant Root group</strong> (one per Entra ID tenant).</li>
+<li>(b) Organizational Unit → <strong>Management Group (MG)</strong>.</li>
+<li>(c) Member account → <strong>Subscription</strong>.</li>
+<li>(d) SCP attach point (root / OU / account) → <strong>Azure Policy assignment scope</strong> (Tenant Root / MG / subscription).</li>
+</ul>
+<p>Shape is identical: a tree with rules attached at nodes that inherit down. Only the names differ.</p>`,
+          starter: '(a) AWS Org root → \n(b) OU → \n(c) Member account → \n(d) SCP attach point → ',
+        },
+      ],
+      selfCheck: [
+        'I can name the AWS shape (Org → OU → account) and the Azure shape (Tenant Root → MG → subscription).',
+        'I can explain "blast radius" in one sentence.',
+        'I know rules attached high flow DOWN; rules at a leaf only apply to that leaf.',
+        'I know inheritance is additive — a child cannot loosen an inherited rule.',
+      ],
     },
     recap: [
       'Both clouds use a tree: Company → folders → accounts/subs.',
@@ -214,13 +238,36 @@ Tenant Root
                             │
                        action runs`,
     handsOn: {
-      prompt: `Two micro-exercises (10 min each):
-
-(1) AWS SCP — open the SCP + IAM lab bench (link below). Pick the "Deny non-allowed regions" template. Trace, in the decision tree, what happens when an admin tries to <code>ec2:RunInstances</code> in <code>eu-west-1</code>. Why does the SCP deny it before IAM is even consulted?
-
-(2) Azure Policy — read the example above. Identify: the <i>field</i> being checked, the <i>operator</i>, the <i>effect</i>. If you wanted this policy in audit-only mode (so it logs but doesn't block), what would you change?`,
-      artifactKind: 'note',
-      template: `Q1: Why did the SCP deny eu-west-1 before IAM was checked?\n\n\nQ2: To audit-only the Azure Policy, change <effect> from "deny" to "audit".\n   What field is the policy checking? \n   What operator? `,
+      intro: 'Two short exercises on guardrails. Use the lab benches if you want to play first; reveal the model answer when ready.',
+      steps: [
+        {
+          label: 'Q1',
+          question: 'An admin runs <code>ec2:RunInstances</code> in <code>eu-west-1</code> against an account inside an OU that has the "Deny non-allowed regions" SCP attached. Their IAM policy grants <code>ec2:*</code>. What happens, and why?',
+          hint: 'SCP evaluates before IAM. An explicit Deny anywhere on the path wins, regardless of what IAM allows.',
+          answer: `<p>The call is <strong>denied</strong> at the SCP layer before IAM is even consulted.</p>
+<p>Why: AWS evaluates the SCP path first. The SCP's Deny statement matches because <code>aws:RequestedRegion = eu-west-1</code> is not in the allowed list (<code>us-east-1</code>, <code>us-west-2</code>). Once an SCP denies, IAM never gets a vote. The admin sees <code>AccessDenied</code> with an "explicit deny in a service control policy" annotation. Their <code>ec2:*</code> IAM grant is irrelevant — the SCP caps what is even possible.</p>`,
+          starter: 'What happens:\n\nWhy:',
+        },
+        {
+          label: 'Q2',
+          question: 'In the Azure Policy example ("Storage: deny public blob access"), identify (a) the <em>field</em> being checked, (b) the <em>operator</em>, (c) the <em>effect</em>. What would you change to make it <strong>audit-only</strong>?',
+          hint: 'Audit-only = log non-compliance, do not block.',
+          answer: `<ul>
+<li>(a) Field: <code>Microsoft.Storage/storageAccounts/allowBlobPublicAccess</code> (the <code>type</code> field narrows to storage accounts; the second condition is the real check).</li>
+<li>(b) Operator: <code>equals</code> — comparing the field to the string <code>"true"</code>.</li>
+<li>(c) Effect: <code>deny</code>.</li>
+</ul>
+<p><strong>Audit-only:</strong> change <code>"effect": "deny"</code> to <code>"effect": "audit"</code>. The condition is unchanged — only the consequence differs. Audit is the standard "soft launch" before promoting to Deny.</p>`,
+          starter: '(a) Field:\n(b) Operator:\n(c) Effect:\n\nTo make it audit-only: ',
+        },
+      ],
+      selfCheck: [
+        'I can explain in one sentence why an explicit SCP Deny always wins over an IAM Allow.',
+        'I can list the six Azure Policy effects (Audit, Deny, Append, Modify, DeployIfNotExists, AuditIfNotExists).',
+        'I know an Azure Policy is a definition + an assignment — neither alone does anything.',
+        'I know SCPs have two effects (Allow, Deny); Azure Policy has six.',
+        'I would default to Audit first, promote to Deny once false positives are ruled out.',
+      ],
       labLinks: [
         { route: '/practice/scp', label: 'Open SCP + IAM lab bench' },
         { route: '/practice/azure-policy', label: 'Open Azure Policy lab bench' },
@@ -336,17 +383,53 @@ exports.handler = async (event) => {
                                    ▼             ▼
                               Auto-remediate   Open ticket / page oncall`,
     handsOn: {
-      prompt: `Two parts (5 min each):
-
-(1) Read the custom Config rule code above. What would you change to make it
-require BOTH "Owner" AND "CostCenter" tags?
-
-(2) Open Defender for Cloud's documentation (linked below). For one
-recommendation of your choice ("Storage accounts should disable public network
-access" is a good one), trace it back to: which underlying Azure Policy
-definition fires it, and which MCSB control it maps to.`,
-      artifactKind: 'note',
-      template: `Q1: To require BOTH Owner AND CostCenter tags:\n  - Add check: \n  - New compliance condition: \n\nQ2: Recommendation:\n  - Underlying policy definition:\n  - MCSB control:`,
+      intro: 'Two exercises on detective controls. Both are self-contained — no external docs to open.',
+      steps: [
+        {
+          label: 'Q1',
+          question: 'Read the custom Config rule code in the AWS panel above. What two changes do you make to require BOTH <code>Owner</code> AND <code>CostCenter</code> tags (not just <code>Owner</code>)?',
+          hint: 'The <code>compliant</code> variable is a boolean expression — extend it. Then make the annotation explain which tag is missing so on-call can act.',
+          answer: `<ol>
+<li><strong>Extend the compliance check</strong> to AND the second tag:
+<pre><code>const compliant =
+  "Owner" in tags &amp;&amp; tags.Owner.length &gt; 0 &amp;&amp;
+  "CostCenter" in tags &amp;&amp; tags.CostCenter.length &gt; 0;</code></pre>
+</li>
+<li><strong>Improve the annotation</strong> so it names the missing tag(s):
+<pre><code>const missing = ["Owner", "CostCenter"]
+  .filter(k =&gt; !tags[k] || !tags[k].length);
+return {
+  Compliance: missing.length === 0 ? "COMPLIANT" : "NON_COMPLIANT",
+  Annotation: missing.length === 0
+    ? "Has Owner and CostCenter"
+    : "Missing required tag(s): " + missing.join(", "),
+};</code></pre>
+</li>
+</ol>
+<p>The annotation lands in the Config console — it is what FinOps reads first when triaging. Vague annotations create extra round-trips.</p>`,
+          starter: 'Change 1:\n\nChange 2:',
+        },
+        {
+          label: 'Q2',
+          question: 'Trace the data flow on Azure from a single audit-mode <strong>Azure Policy definition</strong> to a number on the <strong>Secure Score</strong>. What plays what role at each step (Policy, MCSB, Defender for Cloud, Secure Score)?',
+          hint: 'Four layers. Policy is the rule. MCSB is the bundle. Defender for Cloud is the dashboard. Secure Score is the aggregate %.',
+          answer: `<ol>
+<li><strong>Azure Policy (audit-mode definition)</strong> — evaluates each resource against its condition and emits a verdict (COMPLIANT / NON_COMPLIANT). The rule logic lives here.</li>
+<li><strong>MCSB (the built-in initiative)</strong> — bundles ~250 such definitions and is assigned once at a top MG so all subscriptions inherit. It is <em>not</em> a new rule engine; it is a curated list of definitions.</li>
+<li><strong>Defender for Cloud</strong> — reads the verdicts and surfaces each non-compliant resource as a <em>recommendation</em> with severity + remediation steps + a "Fix" button where possible.</li>
+<li><strong>Secure Score</strong> — the rolling % of remediated recommendations. Fix one → score ticks up. A new non-compliant resource appears → score ticks down.</li>
+</ol>
+<p>So the chain is: <strong>Policy definition → MCSB bundles policies → Defender for Cloud surfaces non-compliance as recommendations → Secure Score aggregates remediation rate.</strong></p>`,
+          starter: '1. Azure Policy:\n2. MCSB:\n3. Defender for Cloud:\n4. Secure Score:',
+        },
+      ],
+      selfCheck: [
+        'I can explain in one sentence the difference between a managed Config rule and a custom one.',
+        'I know configuration-change vs periodic triggers and when each is right.',
+        'I can name the three Azure tools that together do detection: Azure Policy (audit), Defender for Cloud, MCSB.',
+        'I know Secure Score is a percentage, and what makes it go up or down.',
+        'I would check the managed-rule catalog before writing a custom Lambda.',
+      ],
       labLinks: [
         { route: '/practice/azure-policy', label: 'Azure Policy lab bench' },
       ],
@@ -466,14 +549,38 @@ definition fires it, and which MCSB control it maps to.`,
             ▼
        Hand to the team`,
     handsOn: {
-      prompt: `One conceptual exercise:
-
-You're asked to add a new "preventive" control: deny IAM users (force everyone
-to use IAM Identity Center / SSO). On AWS, what's the artifact, and where do
-you attach it? On Azure, what's the closest equivalent (hint: Entra ID +
-Azure Policy), and is it "preventive" in the same sense?`,
-      artifactKind: 'note',
-      template: `AWS:\n  Artifact type: \n  Where to attach: \n  Why this is "preventive": \n\nAzure equivalent:\n  Identity tool: \n  Policy effect to use: \n  Is it "preventive" in the same sense? `,
+      intro: 'A two-part design question on preventive controls. The artifact differs between AWS and Azure — name both and the trade-off.',
+      steps: [
+        {
+          label: 'Q1',
+          question: 'On AWS, you want a preventive control that denies IAM user creation across the whole org (force everyone onto IAM Identity Center / SSO). What artifact do you write, where do you attach it, and why does that count as "preventive"?',
+          hint: 'P-D-P: preventive is the SCP layer. Attach high for org-wide coverage.',
+          answer: `<ul>
+<li><strong>Artifact:</strong> an SCP with <code>Effect: Deny</code> covering the IAM-user surface — at minimum <code>iam:CreateUser</code>, <code>iam:CreateLoginProfile</code>, <code>iam:CreateAccessKey</code>. Resource <code>arn:aws:iam::*:user/*</code>. Leave <code>iam:CreateRole</code> and <code>iam:CreateServiceLinkedRole</code> out of the deny list — those are still needed.</li>
+<li><strong>Where to attach:</strong> the <strong>organization root</strong>. Covers every account, present and future. Exempt the management account via <code>NotAction</code> if it must keep an IAM user (rare).</li>
+<li><strong>Why "preventive":</strong> the SCP is checked <em>before</em> IAM during action evaluation. An admin in any member account cannot succeed — the call is rejected before any IAM user is created. No detective sweep needed; the bad resource never exists.</li>
+</ul>`,
+          starter: 'Artifact:\n\nWhere to attach:\n\nWhy this is "preventive":',
+        },
+        {
+          label: 'Q2',
+          question: 'What is the closest Azure equivalent for the same goal (no local accounts — force Entra SSO)? Is the control "preventive" in the same sense as AWS?',
+          hint: 'Azure has no AWS-style "IAM user" — identities live in Entra ID. The full answer uses two artifacts at two layers.',
+          answer: `<ul>
+<li><strong>Identity-layer artifact:</strong> <strong>Entra ID Conditional Access</strong> — require SSO + MFA for any admin role assignment. Blocks at sign-in, not at resource creation.</li>
+<li><strong>Resource-layer artifact:</strong> an <strong>Azure Policy</strong> (or MCSB built-in) with <code>effect: deny</code>, assigned at Tenant Root or a top MG, that denies non-Entra principals in role assignments or local-account patterns. Built-in controls like "Accounts with owner permissions on Azure resources should be MFA enabled" are the closest one-liner.</li>
+<li><strong>Is it "preventive" in the same sense?</strong> Partly. Azure Policy <code>deny</code> is preventive at the resource control plane — it stops the deployment. But because Azure identities live in Entra ID (not the resource plane), you need <em>both</em> Entra Conditional Access (identity layer) and Azure Policy deny (resource layer) to match what one AWS SCP covers. On AWS one artifact spans both; on Azure you need two.</li>
+</ul>`,
+          starter: 'Identity tool:\n\nPolicy artifact + effect:\n\nIs it "preventive" in the same sense?',
+        },
+      ],
+      selfCheck: [
+        'I can name what a Landing Zone is and why teams "land" into a pre-built environment.',
+        'I can name the three AWS control types (P-D-P) and one example of each.',
+        'I know the AWS Account Factory ↔ Azure Terraform subscription-vending mapping.',
+        'I know MCSB initiative at MG root is the Azure analog of mandatory SCPs at org root.',
+        'I know Azure has no single Control Tower; the LZ is stitched from MG hierarchy + initiatives + vending pipelines.',
+      ],
     },
     recap: [
       'Landing Zone = the pre-secured, pre-configured environment new teams land in.',
@@ -610,18 +717,39 @@ resource "azurerm_management_group_policy_assignment" "mcsb_at_workloads" {
        │
        └─ on a regular cadence: detect drift via "plan -refresh-only"`,
     handsOn: {
-      prompt: `Read the AWS and Azure examples above carefully. Then answer:
-
-(1) In the AWS example, where is the policy ATTACHED, and what would happen
-if you removed the <code>aws_organizations_policy_attachment</code> resource
-and re-applied?
-
-(2) In the Azure example, what's the difference between
-<code>data "azurerm_policy_set_definition"</code> and a
-<code>resource "azurerm_policy_set_definition"</code>? When would you use
-each?`,
-      artifactKind: 'note',
-      template: `Q1: \n  - Attached at: \n  - If I remove the attachment resource and re-apply: \n\nQ2: \n  - "data" block means: \n  - "resource" block means: \n  - I'd use "data" when: \n  - I'd use "resource" when: `,
+      intro: 'Two reading exercises on the Terraform examples above. The skill is reading config that someone else wrote.',
+      steps: [
+        {
+          label: 'Q1',
+          question: 'In the AWS Terraform example, where is the SCP <em>attached</em>? If you DELETE the <code>aws_organizations_policy_attachment "to_workloads"</code> resource block from the .tf file and re-run <code>terraform apply</code>, what does Terraform do?',
+          hint: 'Look for the resource whose name ends in <code>_attachment</code>. Terraform reconciles config to state — a deleted resource means destroy.',
+          answer: `<ul>
+<li><strong>Attached at:</strong> the <strong>Workloads OU</strong> (<code>target_id = "ou-abcd-1234workloads"</code>). Note that <code>aws_organizations_policy</code> only <em>defines</em> the policy object; the separate <code>aws_organizations_policy_attachment</code> resource is what actually binds it to a target. Define + attach are two distinct operations in AWS Organizations.</li>
+<li><strong>If you delete the attachment and re-apply:</strong> <code>terraform plan</code> shows <code># aws_organizations_policy_attachment.to_workloads will be destroyed</code>. After <code>apply</code>, the policy object still exists in AWS Organizations — but <strong>nothing is attached to it</strong>, so the deny no longer flows down to any account. The Workloads OU loses the region restriction immediately.</li>
+</ul>
+<p>This is the classic "policy exists but isn't attached" trap. When reviewing PRs, always check that a new <code>aws_organizations_policy</code> ships with a matching <code>_attachment</code> in the same module.</p>`,
+          starter: 'Attached at:\n\nIf I remove the attachment and re-apply:',
+        },
+        {
+          label: 'Q2',
+          question: 'What is the difference between <code>data "azurerm_policy_set_definition"</code> and <code>resource "azurerm_policy_set_definition"</code>? When do you use each?',
+          hint: '<code>data</code> looks something up. <code>resource</code> creates / manages something.',
+          answer: `<ul>
+<li><strong><code>data</code> block</strong> — a read-only <em>lookup</em>. Terraform asks the provider for an existing object and returns its attributes (e.g., <code>.id</code>). The example uses <code>data "azurerm_policy_set_definition" "mcsb"</code> because MCSB is a built-in Microsoft-managed initiative — Terraform must NOT try to create it; it just needs the ID to make the assignment.</li>
+<li><strong><code>resource</code> block</strong> — a <em>managed</em> object. Terraform creates it, updates it on change, destroys it on removal. <code>resource "azurerm_policy_set_definition" "corp_security"</code> is how you would define a custom company initiative.</li>
+<li><strong>Use <code>data</code> when</strong> the object already exists and you only need its ID/attributes — built-ins, things owned by another team, things created out-of-band.</li>
+<li><strong>Use <code>resource</code> when</strong> you want Terraform to own the lifecycle (create, update, destroy).</li>
+</ul>`,
+          starter: '"data" means:\n\n"resource" means:\n\nI would use "data" when:\n\nI would use "resource" when:',
+        },
+      ],
+      selfCheck: [
+        'I can name the four core Terraform building blocks: provider, resource, variable, output.',
+        'I know plan shows the diff; apply executes it; state records reality.',
+        'I know data is a read-only lookup and resource is owned by Terraform.',
+        'I would never edit state by hand; the remote backend handles locking.',
+        'I read Terraform 10× more often than I write it from scratch.',
+      ],
     },
     recap: [
       'Four building blocks: provider, resource, variable, output. Plus modules and state.',

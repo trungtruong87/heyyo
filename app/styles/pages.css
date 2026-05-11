@@ -577,6 +577,107 @@
 [data-theme="dark"] .fnd-explain textarea,
 [data-theme="dark"] .ticket-build-area { background: rgba(255,255,255,.04); }
 
+/* Hands-on: stepped exercises */
+.handson-intro { margin: 4px 0 12px; color: var(--text2); line-height: 1.55; }
+.handson-labs { margin: 6px 0 14px; }
+.handson-previous { margin: 10px 0; }
+.handson-previous summary { cursor: pointer; color: var(--text2); font-size: 13px; }
+.handson-previous pre {
+  background: var(--surface2, #f3f5f8);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 10px 12px;
+  font-size: 12.5px;
+  margin: 6px 0 0;
+  white-space: pre-wrap;
+}
+[data-theme="dark"] .handson-previous pre { background: rgba(255,255,255,.04); }
+
+.handson-steps { display: flex; flex-direction: column; gap: 14px; margin: 4px 0 6px; }
+.handson-step {
+  background: var(--surface2, #f8fafc);
+  border: 1px solid var(--border);
+  border-left-width: 3px;
+  border-radius: 6px;
+  padding: 14px 16px;
+}
+[data-theme="dark"] .handson-step { background: rgba(255,255,255,.03); }
+.handson-step-aws   { border-left-color: var(--amber); }
+.handson-step-azure { border-left-color: var(--blue); }
+.handson-step-tf    { border-left-color: var(--purple); }
+.handson-step-green { border-left-color: var(--green); }
+
+.handson-step-head { display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap; margin-bottom: 8px; }
+.handson-step-label {
+  font-family: var(--font-mono, 'DM Mono', monospace);
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text);
+  background: var(--bg);
+  padding: 2px 8px;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.handson-question { font-size: 14.5px; line-height: 1.55; color: var(--text); }
+.handson-question code { font-size: 12.5px; }
+
+.handson-hint-toggle { font-size: 12px; padding: 4px 10px; margin: 4px 0; }
+.handson-hint {
+  background: rgba(83,74,183,.07);
+  border-left: 3px solid var(--purple);
+  padding: 8px 12px;
+  border-radius: 4px;
+  font-size: 13px;
+  color: var(--text2);
+  font-style: italic;
+  margin: 4px 0 8px;
+}
+[data-theme="dark"] .handson-hint { background: rgba(255,255,255,.04); }
+
+.handson-tools { margin-top: 6px; align-items: center; gap: 8px; }
+.handson-tools .btn { font-size: 13px; }
+
+.handson-answer {
+  margin-top: 10px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 10px 14px;
+}
+.handson-answer .layer-label { display: block; margin-bottom: 6px; }
+.handson-answer-body { font-size: 14px; line-height: 1.6; color: var(--text); }
+.handson-answer-body p { margin: 6px 0; }
+.handson-answer-body ul, .handson-answer-body ol { margin: 6px 0 6px 20px; padding: 0; }
+.handson-answer-body li { margin: 4px 0; line-height: 1.55; }
+.handson-answer-body code { font-size: 12.5px; word-break: break-word; }
+.handson-answer-body pre {
+  background: var(--surface2, #f3f5f8);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 10px 12px;
+  overflow-x: auto;
+  font-size: 12.5px;
+  line-height: 1.5;
+  margin: 6px 0;
+}
+[data-theme="dark"] .handson-answer-body pre { background: rgba(255,255,255,.04); }
+
+.handson-selfcheck {
+  margin-top: 16px;
+  padding: 12px 16px;
+  background: var(--surface2, #f8fafc);
+  border-radius: 6px;
+  border: 1px dashed var(--border);
+}
+[data-theme="dark"] .handson-selfcheck { background: rgba(255,255,255,.03); }
+.handson-selfcheck h3 { margin: 0 0 8px; font-size: 14px; font-weight: 700; color: var(--text); }
+.handson-checklist { list-style: none; margin: 0; padding: 0; }
+.handson-checklist li { margin: 6px 0; }
+.handson-checklist label { display: flex; gap: 10px; align-items: flex-start; cursor: pointer; line-height: 1.5; font-size: 13.5px; color: var(--text); }
+.handson-checklist input[type="checkbox"] { margin-top: 3px; flex-shrink: 0; }
+.handson-checklist input[type="checkbox"]:checked + span { text-decoration: line-through; color: var(--text3); }
+
 .fnd-recap ul, .ticket-recap ul { margin: 6px 0 0 18px; padding: 0; }
 .fnd-recap li, .ticket-recap li { margin: 6px 0; line-height: 1.55; }
 .fnd-talking ol, .ticket-talking ol { margin: 6px 0 0 18px; padding: 0; }

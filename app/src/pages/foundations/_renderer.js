@@ -1,10 +1,88 @@
 // Shared renderer for Foundation Days. Each /foundations/N route mounts a
 // thin module that calls into here with its day id.
 
-import { html, $, badge, escapeHtml } from '../../core/ui.js';
+import { html, $, badge, escapeHtml, copyToClipboard } from '../../core/ui.js';
 import { FOUNDATIONS, foundationById } from '../../data/foundations.js';
 import { getFndDone, setFndDone, getExplain, setExplain } from '../../core/storage.js';
 import { navigate } from '../../core/router.js';
+
+function cloudClass(cloud) {
+  return cloud === 'aws' ? 'aws' :
+         cloud === 'azure' ? 'azure' :
+         cloud === 'tf' ? 'tf' : 'green';
+}
+
+function handsOnStepHtml(step, f) {
+  const cc = cloudClass(f.cloud);
+  const stored = getExplain('handson_' + f.id + '_' + step.label);
+  const value = stored || step.starter || '';
+  const labelEsc = escapeHtml(step.label);
+  return `
+    <section class="handson-step handson-step-${cc}">
+      <div class="handson-step-head">
+        <strong class="handson-step-label">${labelEsc}</strong>
+        <span class="handson-question">${step.question}</span>
+      </div>
+      ${step.hint ? `
+        <button class="btn handson-hint-toggle" data-action="toggle-hint">💡 Hint</button>
+        <div class="handson-hint hidden">${step.hint}</div>
+      ` : ''}
+      <textarea class="handson-step-area" data-step-key="handson_${f.id}_${labelEsc}"
+                placeholder="${escapeHtml('Your answer…')}"
+                rows="5">${escapeHtml(value)}</textarea>
+      <div class="btn-row handson-tools">
+        <button class="btn btn-${cc}" data-action="show-answer">Show model answer</button>
+        <button class="btn" data-action="copy-answer">Copy answer</button>
+        <span class="hint" data-saved-step></span>
+      </div>
+      <div class="handson-answer hidden">
+        <span class="layer-label">Model answer</span>
+        <div class="handson-answer-body">${step.answer}</div>
+      </div>
+    </section>`;
+}
+
+function renderHandsOnCard(f) {
+  const ho = f.handsOn || {};
+  const legacyNote = getExplain('handson_' + f.id);
+  return `
+    <div class="card fnd-handson">
+      <h2>🔧 Hands-on</h2>
+      ${ho.intro ? `<p class="handson-intro">${escapeHtml(ho.intro)}</p>` : ''}
+      ${ho.labLinks ? `
+        <div class="btn-row handson-labs">
+          ${ho.labLinks.map(labLinkHtml).join('')}
+        </div>` : ''}
+      ${legacyNote ? `
+        <details class="handson-previous">
+          <summary>📝 Notes you wrote earlier (old format) — click to view</summary>
+          <pre>${escapeHtml(legacyNote)}</pre>
+        </details>` : ''}
+      <div class="handson-steps">
+        ${(ho.steps || []).map(s => handsOnStepHtml(s, f)).join('')}
+      </div>
+      ${ho.selfCheck ? handsOnSelfCheckHtml(ho.selfCheck, f) : ''}
+    </div>`;
+}
+
+function handsOnSelfCheckHtml(items, f) {
+  const cc = cloudClass(f.cloud);
+  return `
+    <div class="handson-selfcheck handson-selfcheck-${cc}">
+      <h3>✅ Self-check — can you say each of these out loud?</h3>
+      <ul class="handson-checklist">
+        ${items.map((t, i) => {
+          const checked = getExplain('handson_' + f.id + '_check_' + i) ? 'checked' : '';
+          return `<li>
+            <label>
+              <input type="checkbox" data-check-idx="${i}" ${checked}>
+              <span>${escapeHtml(t)}</span>
+            </label>
+          </li>`;
+        }).join('')}
+      </ul>
+    </div>`;
+}
 
 function panelHtml(p) {
   const cloudCls = p.cloud === 'aws' ? 'aws' :
@@ -67,22 +145,7 @@ export function renderFoundation(id) {
           <pre>${escapeHtml(f.diagram)}</pre>
         </div>` : ''}
 
-      <div class="card fnd-handson">
-        <h2>🔧 Hands-on</h2>
-        <p>${f.handsOn.prompt}</p>
-        ${f.handsOn.labLinks ? `
-          <div class="btn-row">
-            ${f.handsOn.labLinks.map(labLinkHtml).join('')}
-          </div>` : ''}
-        <textarea class="fnd-handson-area" data-key="handson_${f.id}"
-                  placeholder="${escapeHtml('Your notes / answers here…')}"
-                  rows="6">${escapeHtml(f.handsOn.template || '')}</textarea>
-        <div class="btn-row">
-          <button class="btn btn-${f.cloud === 'aws' ? 'aws' : f.cloud === 'azure' ? 'azure' : f.cloud === 'tf' ? 'tf' : 'green'}"
-                  data-action="save-handson">Save my answer</button>
-          <span class="hint" data-saved-handson></span>
-        </div>
-      </div>
+      ${renderHandsOnCard(f)}
 
       <div class="card fnd-recap">
         <h2>📌 Recap — what you should now believe</h2>
@@ -134,14 +197,6 @@ export function mountFoundation(root, id) {
     if (note) { note.textContent = '✓ Saved'; setTimeout(() => note.textContent = '', 1500); }
   });
 
-  // Save handson note (kept under explain key namespace)
-  root.querySelector('[data-action="save-handson"]')?.addEventListener('click', () => {
-    const ta = root.querySelector('.fnd-handson-area');
-    setExplain('handson_' + f.id, ta.value);
-    const note = root.querySelector('[data-saved-handson]');
-    if (note) { note.textContent = '✓ Saved'; setTimeout(() => note.textContent = '', 1500); }
-  });
-
   // Toggle done
   root.querySelector('[data-action="toggle-done"]')?.addEventListener('click', () => {
     const done = getFndDone();
@@ -153,10 +208,50 @@ export function mountFoundation(root, id) {
     if (main) mountFoundation(main, f.id);
   });
 
-  // Pre-fill handson note from storage if user has one
-  const handson = getExplain('handson_' + f.id);
-  if (handson) {
-    const ta = root.querySelector('.fnd-handson-area');
-    if (ta) ta.value = handson;
+  // Hands-on: delegated click handlers for hint/answer/copy
+  const handsonRoot = root.querySelector('.fnd-handson');
+  if (handsonRoot) {
+    handsonRoot.addEventListener('click', (e) => {
+      const btn = e.target.closest('[data-action]');
+      if (!btn) return;
+      const step = btn.closest('.handson-step');
+      const action = btn.dataset.action;
+
+      if (action === 'toggle-hint' && step) {
+        const hint = step.querySelector('.handson-hint');
+        if (hint) hint.classList.toggle('hidden');
+      } else if (action === 'show-answer' && step) {
+        const ans = step.querySelector('.handson-answer');
+        if (ans) {
+          ans.classList.toggle('hidden');
+          btn.textContent = ans.classList.contains('hidden') ? 'Show model answer' : 'Hide model answer';
+        }
+      } else if (action === 'copy-answer' && step) {
+        const body = step.querySelector('.handson-answer-body');
+        if (body) copyToClipboard(body.textContent.trim(), btn);
+      }
+    });
+
+    // Auto-save per-step textareas (debounced)
+    const saveTimers = {};
+    handsonRoot.addEventListener('input', (e) => {
+      const ta = e.target.closest('.handson-step-area');
+      if (!ta) return;
+      const key = ta.dataset.stepKey;
+      if (!key) return;
+      clearTimeout(saveTimers[key]);
+      saveTimers[key] = setTimeout(() => {
+        setExplain(key, ta.value);
+        const note = ta.closest('.handson-step')?.querySelector('[data-saved-step]');
+        if (note) { note.textContent = '✓ Saved'; setTimeout(() => { note.textContent = ''; }, 1500); }
+      }, 400);
+    });
+
+    // Persist self-check checkboxes
+    handsonRoot.addEventListener('change', (e) => {
+      const cb = e.target.closest('input[type="checkbox"][data-check-idx]');
+      if (!cb) return;
+      setExplain('handson_' + f.id + '_check_' + cb.dataset.checkIdx, cb.checked ? '1' : '');
+    });
   }
 }
