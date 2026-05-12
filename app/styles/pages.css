@@ -1058,3 +1058,241 @@
   a[href]:after { content: ""; }
   a { color: inherit; text-decoration: none; }
 }
+
+/* ── Concept-dive worked-example table ─────────────────────────────────── */
+.fnd-cd-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+  margin: 10px 0;
+}
+.fnd-cd-table th, .fnd-cd-table td {
+  text-align: left;
+  padding: 6px 8px;
+  border-bottom: 1px solid color-mix(in srgb, var(--text3) 22%, transparent);
+}
+.fnd-cd-table thead th {
+  font-size: 11px;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  color: var(--text3);
+}
+.fnd-cd-table code {
+  font-family: var(--font-mono, 'DM Mono', monospace);
+  font-size: 0.95em;
+  background: color-mix(in srgb, var(--text3) 12%, transparent);
+  padding: 1px 5px;
+  border-radius: 3px;
+}
+
+/* ── Field notes (foundation days) ─────────────────────────────────────── */
+.fnd-fieldnotes {
+  border-left: 3px solid var(--amber, #d97706);
+  background: linear-gradient(90deg,
+    color-mix(in srgb, var(--amber, #d97706) 6%, transparent),
+    transparent 40%);
+}
+.fnd-fieldnotes-list { margin: 8px 0 0 18px; padding: 0; }
+.fnd-fieldnotes-list li {
+  margin: 10px 0;
+  line-height: 1.6;
+  color: var(--text);
+}
+.fnd-fieldnotes-list li code {
+  font-family: var(--font-mono, 'DM Mono', monospace);
+  font-size: 0.92em;
+  background: color-mix(in srgb, var(--text3) 12%, transparent);
+  padding: 1px 5px;
+  border-radius: 3px;
+}
+
+/* ── Done when (ticket acceptance criteria) ────────────────────────────── */
+.ticket-donewhen {
+  border-left: 3px solid var(--green, #10b981);
+  background: linear-gradient(90deg,
+    color-mix(in srgb, var(--green, #10b981) 7%, transparent),
+    transparent 40%);
+}
+.donewhen-list {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+}
+.donewhen-list li {
+  position: relative;
+  padding: 6px 0 6px 28px;
+  line-height: 1.55;
+  border-bottom: 1px dashed color-mix(in srgb, var(--text3) 18%, transparent);
+}
+.donewhen-list li:last-child { border-bottom: none; }
+.donewhen-list li::before {
+  content: '☐';
+  position: absolute;
+  left: 4px;
+  top: 5px;
+  font-size: 16px;
+  color: var(--green, #10b981);
+}
+.donewhen-list li code {
+  font-family: var(--font-mono, 'DM Mono', monospace);
+  font-size: 0.92em;
+  background: color-mix(in srgb, var(--text3) 12%, transparent);
+  padding: 1px 5px;
+  border-radius: 3px;
+}
+
+/* ── Build scaffold (progressive reveal between starter and sample) ──── */
+.build-scaffold {
+  margin: 10px 0 14px;
+  padding: 10px 12px;
+  background: color-mix(in srgb, var(--text3) 6%, transparent);
+  border-radius: 6px;
+}
+.build-steps {
+  list-style: none;
+  margin: 4px 0 0;
+  padding: 0;
+  counter-reset: bstep;
+}
+.build-step { margin: 6px 0; }
+.build-step-toggle {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  border: 1px solid color-mix(in srgb, var(--text3) 24%, transparent);
+  border-radius: 5px;
+  padding: 8px 10px;
+  color: var(--text);
+  cursor: pointer;
+  font: inherit;
+  font-size: 13px;
+}
+.build-step-toggle:hover {
+  background: color-mix(in srgb, var(--text3) 8%, transparent);
+}
+.build-step-toggle.open .build-step-chev { transform: rotate(90deg); }
+.build-step-num {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  color: var(--text3);
+  min-width: 60px;
+}
+.build-step-label { flex: 1; }
+.build-step-chev {
+  display: inline-block;
+  transition: transform 0.15s ease;
+  color: var(--text3);
+}
+.build-step-body {
+  padding: 10px 12px 6px 12px;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--text);
+}
+.build-step-body code {
+  font-family: var(--font-mono, 'DM Mono', monospace);
+  font-size: 0.92em;
+  background: color-mix(in srgb, var(--text3) 12%, transparent);
+  padding: 1px 5px;
+  border-radius: 3px;
+}
+.build-step-body pre {
+  background: color-mix(in srgb, var(--text3) 10%, transparent);
+  border-radius: 4px;
+  padding: 8px 10px;
+  margin: 6px 0;
+  overflow-x: auto;
+}
+
+/* ── Production reality check (tickets) ────────────────────────────────── */
+.ticket-production {
+  border-left: 3px solid var(--purple, #7c3aed);
+  background: linear-gradient(90deg,
+    color-mix(in srgb, var(--purple, #7c3aed) 6%, transparent),
+    transparent 40%);
+}
+.ticket-production ul { margin: 8px 0 0 18px; padding: 0; }
+.ticket-production li {
+  margin: 10px 0;
+  line-height: 1.6;
+  color: var(--text);
+}
+.ticket-production li code {
+  font-family: var(--font-mono, 'DM Mono', monospace);
+  font-size: 0.92em;
+  background: color-mix(in srgb, var(--text3) 12%, transparent);
+  padding: 1px 5px;
+  border-radius: 3px;
+}
+
+/* ── Reading list ↔ Hub map ────────────────────────────────────────────── */
+.readinglist-page .rl-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+.readinglist-page .rl-table th,
+.readinglist-page .rl-table td {
+  text-align: left;
+  vertical-align: top;
+  padding: 12px 10px;
+  border-bottom: 1px solid color-mix(in srgb, var(--text3) 22%, transparent);
+}
+.readinglist-page .rl-table thead th {
+  font-size: 12px;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  color: var(--text3);
+  border-bottom: 2px solid color-mix(in srgb, var(--text3) 35%, transparent);
+}
+.readinglist-page .rl-th-item   { width: 28%; }
+.readinglist-page .rl-th-chips  { width: 22%; }
+.readinglist-page .rl-th-own    { width: 50%; }
+.readinglist-page .rl-item-name {
+  font-weight: 600;
+  margin-bottom: 6px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.readinglist-page .rl-item-links {
+  font-size: 12px;
+  color: var(--text3);
+  line-height: 1.5;
+}
+.readinglist-page .rl-item-links .map-link { margin-right: 4px; }
+.readinglist-page .rl-chips { line-height: 2.0; }
+.readinglist-page .rl-chips .chip { margin: 2px 4px 2px 0; }
+.readinglist-page .rl-own {
+  color: var(--text);
+  line-height: 1.6;
+}
+.readinglist-page .rl-own code {
+  font-family: var(--font-mono, 'DM Mono', monospace);
+  font-size: 0.92em;
+  background: color-mix(in srgb, var(--text3) 12%, transparent);
+  padding: 1px 5px;
+  border-radius: 3px;
+}
+@media (max-width: 800px) {
+  .readinglist-page .rl-table,
+  .readinglist-page .rl-table thead,
+  .readinglist-page .rl-table tbody,
+  .readinglist-page .rl-table tr,
+  .readinglist-page .rl-table th,
+  .readinglist-page .rl-table td { display: block; }
+  .readinglist-page .rl-table thead { display: none; }
+  .readinglist-page .rl-row {
+    border-bottom: 2px solid color-mix(in srgb, var(--text3) 22%, transparent);
+    padding: 12px 0;
+  }
+  .readinglist-page .rl-row td { padding: 6px 0; }
+  .readinglist-page .rl-th-item,
+  .readinglist-page .rl-th-chips,
+  .readinglist-page .rl-th-own { width: auto; }
+}

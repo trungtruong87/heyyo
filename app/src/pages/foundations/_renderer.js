@@ -151,6 +151,13 @@ export function renderFoundation(id) {
           <div class="fnd-concept-body">${f.conceptDive.body}</div>
         </div>` : ''}
 
+      ${f.fieldNotes ? `
+        <div class="card fnd-fieldnotes">
+          <span class="layer-label">Field notes — on the job</span>
+          <p class="hint">Quirks, costs, pushback you'll meet. The stuff the docs skip.</p>
+          <ul class="fnd-fieldnotes-list">${f.fieldNotes.map(n => `<li>${n}</li>`).join('')}</ul>
+        </div>` : ''}
+
       ${renderHandsOnCard(f)}
 
       <div class="card fnd-recap">

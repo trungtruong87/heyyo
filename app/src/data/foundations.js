@@ -89,31 +89,81 @@ Tenant Root
    │  /Sub  │      │         │
    └────────┘      └─────────┘`,
     conceptDive: {
-      title: 'Inheritance & blast radius — the checkpoint model',
+      title: 'Inheritance & blast radius — by worked example',
       body: `
-        <p><strong>Picture every action as a passenger walking to a seat.</strong> The org tree
-        is a hallway with one checkpoint installed at every node the passenger walks past.</p>
+        <p><strong>The rule in one sentence.</strong> Every action runs through one checkpoint per
+        node on its path from the root down to its account. <strong>Any single checkpoint can deny.
+        None can override another's deny.</strong> That's the whole inheritance model.</p>
+
+        <p><strong>Worked example 1 — stacking is intersection, not union.</strong></p>
+        <p>Org tree:</p>
+        <pre><code>Root
+└── Workloads OU      ← SCP A: deny  s3:DeleteBucket
+    └── Prod OU        ← SCP B: deny  s3:PutBucketPolicy
+        └── prod-001  ← (no SCP of its own)</code></pre>
+        <p>A user in <code>prod-001</code> calls four S3 actions. What happens to each?</p>
+        <table class="fnd-cd-table">
+          <thead><tr><th>Action</th><th>Root</th><th>Workloads OU</th><th>Prod OU</th><th>Outcome</th></tr></thead>
+          <tbody>
+            <tr><td><code>s3:GetObject</code></td>      <td>—</td><td>—</td><td>—</td><td><strong>allowed</strong> (no deny on path)</td></tr>
+            <tr><td><code>s3:PutObject</code></td>      <td>—</td><td>—</td><td>—</td><td><strong>allowed</strong></td></tr>
+            <tr><td><code>s3:DeleteBucket</code></td>   <td>—</td><td><strong>DENY</strong></td><td>—</td><td><strong>denied</strong> by SCP A</td></tr>
+            <tr><td><code>s3:PutBucketPolicy</code></td><td>—</td><td>—</td><td><strong>DENY</strong></td><td><strong>denied</strong> by SCP B</td></tr>
+          </tbody>
+        </table>
+        <p>Notice: <strong>both</strong> denies apply at <code>prod-001</code>, even though they sit at
+        different levels. The deeper account experiences the <strong>intersection</strong> of every
+        ancestor's restrictions. Add a third SCP at the account level and a fourth would
+        stack on top.</p>
+
+        <p><strong>Worked example 2 — the "more specific wins" trap.</strong></p>
+        <p>A junior engineer reads SCP A and thinks: <em>"I'll just attach an SCP at <code>prod-001</code>
+        that explicitly allows <code>s3:DeleteBucket</code> — the more specific rule wins."</em>
+        Then they're surprised when the action still fails.</p>
+        <p>Here's why. SCPs are <strong>restrictions</strong>, not grants. An "allow" SCP doesn't
+        <em>grant</em> permission; at best it <em>refrains from denying</em>. The Workloads OU's
+        deny is still on the path. Both checkpoints fire. Workloads OU says no. <strong>End of
+        story</strong> — IAM never even gets a vote.</p>
+        <p class="fnd-concept-callout"><strong>Common trap (worth tattooing):</strong>
+        "Most specific rule wins" works in CSS, IAM permissions, file ACLs.
+        <strong>It does NOT work in SCPs or Azure Policy.</strong> Restrictions <em>stack</em>; they
+        do not override. A child can only <em>add</em> denies, never remove a parent's.</p>
+
+        <p><strong>So what is "blast radius"?</strong></p>
+        <p>It's the answer to: <em>"Which accounts does this checkpoint cover?"</em></p>
         <ul>
-          <li>A checkpoint at the <strong>Root</strong> sees every action in the org — biggest blast radius.</li>
-          <li>A checkpoint on the <strong>Workloads OU</strong> sees only actions inside Workloads — medium blast radius.</li>
-          <li>A checkpoint on <strong>one account</strong> sees only that account — tiniest blast radius.</li>
+          <li>Attach at <strong>Root</strong> → covers every account in the org. Biggest blast radius. Use for things that must be true everywhere (deny disabling CloudTrail, deny IAM users).</li>
+          <li>Attach at an <strong>OU/MG</strong> → covers everything in that sub-tree only. Medium. Use for environment-specific rules (Prod stricter than Dev).</li>
+          <li>Attach at a <strong>single account/sub</strong> → covers just that one. Tiny. Use sparingly — usually a smell that the rule belongs higher.</li>
         </ul>
-        <p><strong>Any checkpoint can say "no". None can override another's "no".</strong> So a child OU's stricter
-        rule never <em>loosens</em> the parent's rule — it just installs one more gate on top of it. The
-        deeper you are in the tree, the more gates the action has to clear.</p>
-        <p class="fnd-concept-callout"><strong>Common trap:</strong> "More specific rule wins" works in CSS, IAM,
-        file ACLs. Not here. In org-tree policies the more specific rule <em>stacks</em>, it doesn't override.
-        Restrictions accumulate.</p>
-        <p><strong>So when someone asks "what's the blast radius?"</strong> they're asking <em>which leaves does this
-        checkpoint cover?</em> Attach high for broad coverage, low for narrow coverage — and remember a lower
-        attach point can only add restrictions, not remove the ones already inherited.</p>`,
+        <p><strong>Reviewer's question</strong> for any new guardrail PR: "What is the blast
+        radius, and is that the smallest scope that still works?" Smaller blast radius = fewer
+        surprise breakages, but also more places you might forget to attach it.</p>`,
     },
+    fieldNotes: [
+      'The Tenant Root management group is <b>invisible by default</b>. Turn it on once: <i>Entra ID → Properties → Access management for Azure resources → "Yes"</i>. Without it, policies at "the top" silently apply only at sub level.',
+      'AWS allows OUs to nest 5 deep. Azure allows MG nesting 6 deep. <b>Two levels is plenty.</b> Deep trees are auditor-hostile and Terraform-hostile — every level is another inheritance trap.',
+      'Moving an account between OUs (or a sub between MGs) takes ~60s. SCPs and policies switch in real time. <b>Useful for incident response</b> — pull a compromised account into an isolated OU with deny-all SCPs.',
+      '<b>Sandbox should explicitly deny network egress</b> + expensive SKUs (GPU VMs, p4d EC2, etc.). Otherwise sandbox cost <i>becomes</i> production cost — the #1 unexpected line item on month-end.',
+      'Never run workloads in the AWS management account or Azure Tenant Root. Delegate <b>Defender for Cloud / Config / Security Hub / GuardDuty</b> administration out to a dedicated Security subscription/account. Auditors expect this separation.',
+      'OU/MG <b>renames cascade</b> in the portal — but cached names in Terraform state, Runbooks, and KQL queries silently drift. Treat the canonical ID (not the name) as the contract.',
+      'Cross-cloud parallel that matters: AWS Organizations has <b>one</b> management account; Entra ID has <b>one</b> tenant per organization. Subscriptions are cheap (free to make); AWS accounts cost slightly (CloudTrail, Config defaults).',
+      'Don\'t put audit / log-archive accounts in NonProd OUs. Auditors flag this as a chain-of-custody concern — security tooling should sit in its own OU/MG, not be siblings of workloads.',
+      '"<b>Blast radius</b>" is the word managers and auditors use for "which leaves does this checkpoint cover." Learn it; use it when proposing where to attach a guardrail.',
+    ],
     handsOn: {
       intro: 'Three short exercises to lock in the tree mental model. Answer in the textareas; reveal the model answer when ready.',
       steps: [
         {
           label: 'Q1',
-          question: 'Given the sample tree in the AWS panel (<code>Root → Security OU, Sandbox OU, Workloads OU → NonProd, Prod</code>): if you attach a "deny public storage" rule at the <strong>Workloads</strong> OU, which OUs/accounts does it COVER, and which does it MISS?',
+          question: `Here is the org tree we are working with (same one from the AWS panel above — repeated so you don't scroll):
+<pre><code>Root
+├── Security OU       (audit + log archive accounts)
+├── Sandbox OU        (free play; SCP forbids egress)
+└── Workloads OU
+    ├── NonProd OU    (dev + test accounts)
+    └── Prod OU       (locked-down SCPs)</code></pre>
+You attach a "deny public storage" rule at the <strong>Workloads</strong> OU. Which OUs/accounts does it COVER, and which does it MISS?`,
           hint: 'Rules flow DOWN the tree. Siblings and parents are untouched.',
           answer: `<p><strong>Covers</strong> — everything <em>under</em> Workloads: the NonProd OU, the Prod OU, and every account inside either of them.</p>
 <p><strong>Misses</strong> — Sandbox OU (sibling of Workloads), Security OU (sibling), the management/root account itself, and any future OU added outside the Workloads sub-tree.</p>
@@ -134,7 +184,12 @@ Tenant Root
         },
         {
           label: 'Q3',
-          question: 'Walk an action through the checkpoint model. The sample AWS tree has SCPs attached at three places: <strong>Root</strong> ("deny non-allowed regions"), <strong>Workloads OU</strong> ("deny untagged volumes"), <strong>Prod OU</strong> ("deny IAM user creation"). A user in a <em>Prod</em> account tries to <code>iam:CreateUser</code> in <code>us-east-1</code>. How many checkpoints does the action hit, and what happens at each one?',
+          question: `Same tree as Q1, but with three SCPs annotated at different levels:
+<pre><code>Root                    ← SCP: deny non-allowed regions
+└── Workloads OU        ← SCP: deny untagged volumes
+    └── Prod OU         ← SCP: deny IAM user creation
+        └── prod-001    (a real account)</code></pre>
+A user in <code>prod-001</code> tries to <code>iam:CreateUser</code> in <code>us-east-1</code>. <strong>How many checkpoints does the action hit, and what happens at each one?</strong>`,
           hint: 'Trace the path Root → Workloads OU → Prod OU → Prod account. At each step ask: does <em>this</em> checkpoint deny <em>this</em> action?',
           answer: `<p>The action passes through <strong>three checkpoints</strong> on its way to the Prod account:</p>
 <ol>
@@ -298,6 +353,19 @@ Tenant Root
         <p>On Azure the same picture: Azure Policy at the MG/sub level is the inherited checkpoint line; Azure
         RBAC is the per-principal line. Both must clear.</p>`,
     },
+    fieldNotes: [
+      '<b>SCPs do NOT restrict the management account.</b> If an SCP "isn\'t working," check who the principal is — admins in the management account skip the gate. This is by design (break-glass).',
+      '<b>5KB SCP size limit</b> (compressed JSON). Plan for it. Inheritance gives ~10 effective SCPs per OU before you start trimming.',
+      'The default <code>FullAWSAccess</code> SCP attached at the root is an <b>allow-all</b>. <b>Don\'t detach it</b> until your custom Allow-list SCPs cover everything you need — otherwise you lock the entire org out simultaneously.',
+      '<code>aws:PrincipalOrgID</code> is the magic condition for "only roles inside our AWS Org can call this." Use it to lock down cross-account S3 buckets, KMS keys, etc.',
+      '<b>SCPs don\'t apply to service-linked roles.</b> Sometimes a "blocked" action goes through anyway because CloudFormation or another service made the call on its own role. Check the principal in CloudTrail.',
+      'Roll out new SCPs by <b>enabling them in audit via Service Authorization analyzer</b> for ~1 week before flipping to enforce. Catches the "we forgot one workload depended on this" case.',
+      '<b>Azure Policy DINE / Modify effects need a Managed Identity</b> at the assignment with the right RBAC role (usually Contributor + the specific Action). Missing identity = silent no-op. This is the #1 reason DINE policies "don\'t work."',
+      'Policy evaluation cycles: change event (~minutes), full scan (every 24h), on-demand via <code>Start-AzPolicyComplianceScan</code>. <b>Auditors don\'t wait 24h</b> — know how to force the scan.',
+      'Exemptions <b>take an expiry</b>. Make 90 days the default; tag the exemption with requester, JIRA, and renewal cadence. "Permanent" exemptions become audit findings.',
+      '<code>enforcementMode: DoNotEnforce</code> on a policy assignment keeps it visible but stops evaluation. Use during incident pauses or major migrations — <b>not</b> as a workaround for "I don\'t like this rule."',
+      'Custom Azure Policy authoring requires <b>alias discovery</b>: <code>Get-AzPolicyAlias</code> tells you which properties you can target. Without it, your policy condition references nothing.',
+    ],
     handsOn: {
       intro: 'Two short exercises on guardrails. Use the lab benches if you want to play first; reveal the model answer when ready.',
       steps: [
@@ -411,8 +479,8 @@ exports.handler = async (event) => {
           '<b>Defender for Cloud</b> — central security dashboard. Two layers: free (Foundational CSPM, secure score) and paid (CWP — Defender for Servers/Storage/SQL/etc.).',
           '<b>Secure Score</b> — a percentage based on which Defender recommendations you\'ve fixed. Each recommendation maps to one or more Azure Policy assignments.',
           '<b>Microsoft Cloud Security Benchmark (MCSB)</b> — Azure\'s built-in baseline initiative. Assign it once at Tenant Root or at a top MG and you get a continuous compliance check across hundreds of controls.',
-          '<b>Defender for Endpoint (MDE)</b> — separate but related: an EDR for VMs and devices. Surfaces alerts back into Defender for Cloud and Sentinel.',
           '<b>Compliance pane</b> — Defender for Cloud → Regulatory Compliance shows your current state mapped to MCSB, NIST 800-53, ISO 27001, etc.',
+          '<b>MCSB control-ID decoder:</b> <code>NS</code> Network · <code>IM</code> Identity · <code>PA</code> Privileged Access · <code>DP</code> Data Protection · <code>AM</code> Asset Mgmt · <code>LT</code> Logging+Threat · <code>IR</code> Incident Response · <code>PV</code> Posture+Vuln · <code>ES</code> Endpoint · <code>BR</code> Backup · <code>DS</code> DevOps Security · <code>GS</code> Governance.',
         ],
         example: `// Audit-mode Azure Policy
 {
@@ -431,6 +499,37 @@ exports.handler = async (event) => {
   }
 }`,
       },
+      {
+        cloud: 'azure',
+        service: 'Microsoft Defender for Endpoint (MDE)',
+        plain: `MDE is an <b>EDR</b> — Endpoint Detection and Response. Think of it
+                as the security agent that lives <i>on each VM</i>, watching for
+                malware, suspicious processes, lateral movement, and credential
+                theft. Defender for Cloud is the posture dashboard for your
+                whole estate; MDE is the on-host responder. The two products
+                work together — MDE alerts flow up into Defender for Cloud
+                and Sentinel — but they are licensed and admin'd separately.`,
+        detail: [
+          '<b>EDR vs CSPM</b> — Defender for Cloud (CSPM) tells you "this VM is missing a patch"; MDE (EDR) tells you "this VM just ran <code>mimikatz.exe</code> and contacted a known C2." Different layers; you need both.',
+          '<b>License tiers — P1 vs P2.</b> <b>P1</b> is next-gen AV only (no real EDR, no ASR, no automated investigation). <b>P2</b> is the full product — real EDR, ASR rules, auto-investigation+response, threat & vulnerability mgmt. <b>Procurement asks this constantly</b> — know the answer.',
+          '<b>Deployment on Azure VMs</b> — the <code>MDE.Windows</code> / <code>MDE.Linux</code> extension. Auto-installed via a <b>DeployIfNotExists</b> Azure Policy (part of the Defender for Servers Plan 2 initiative).',
+          '<b>Non-Azure VMs + devices</b> — onboard via Defender for Cloud multi-cloud connectors or via <b>Intune</b> for laptops/phones.',
+          '<b>MCSB ES-1 mapping</b> — "every server runs an EDR." This is the MCSB control compliance audits check for endpoint security.',
+          '<b>MMA → AMA migration</b> — the old Microsoft Monitoring Agent (MMA) is deprecated. <b>Azure Monitor Agent (AMA)</b> is the future. If you inherit an estate, the migration story is unavoidable.',
+          '<b>ASR (Attack Surface Reduction) rules</b> — block common attack patterns (Office macros, child processes, etc.). Powerful but tune to avoid false positives — start in <i>audit</i>, promote to <i>block</i>.',
+          '<b>Alert flow</b> — MDE alert → Defender for Cloud Security Alerts → optional Sentinel for SIEM/SOAR. Compliance team usually consumes from Defender for Cloud, not the MDE portal directly.',
+        ],
+        example: `// Policy initiative assignment that auto-deploys MDE
+// (provided by the "Configure Microsoft Defender for Endpoint" initiative)
+{
+  "policyAssignment": {
+    "displayName": "Defender for Endpoint auto-onboard",
+    "scope": "/providers/Microsoft.Management/managementGroups/Workloads",
+    "identity": { "type": "SystemAssigned" },   // ← DINE needs this
+    "policyDefinitionId": "/providers/.../Configure-Microsoft-Defender-for-Endpoint"
+  }
+}`,
+      },
     ],
     diagram: `   Resources change → Config / Policy records the change
                               │
@@ -443,12 +542,124 @@ exports.handler = async (event) => {
            (do nothing)            ┌──────┴──────┐
                                    ▼             ▼
                               Auto-remediate   Open ticket / page oncall`,
+    conceptDive: {
+      title: 'KQL: SQL with Unix pipes — and where to run it',
+      body: `
+        <p><strong>KQL (Kusto Query Language)</strong> is Microsoft's read-only
+        query language. You'll meet it everywhere on Azure: Defender for Cloud,
+        Sentinel, Log Analytics, Resource Graph. It looks like SQL but reads
+        like a Unix pipeline — each <code>|</code> means <em>then do this next</em>.</p>
+
+        <div class="grid-2" style="gap:1rem;margin:1rem 0">
+          <div>
+            <strong>SQL you already know</strong>
+            <pre><code>SELECT name, location
+FROM   Resources
+WHERE  type = 'microsoft.storage/storageaccounts'
+  AND  properties.publicNetworkAccess = 'Enabled'
+ORDER  BY location;</code></pre>
+          </div>
+          <div>
+            <strong>The same query in KQL</strong>
+            <pre><code>Resources
+| where type =~ "microsoft.storage/storageaccounts"
+| where properties.publicNetworkAccess == "Enabled"
+| project name, location
+| order by location asc</code></pre>
+          </div>
+        </div>
+
+        <p><strong>The 4 operators you'll use 90% of the time:</strong></p>
+        <ul>
+          <li><code>where</code> — filter rows (like SQL <code>WHERE</code>).</li>
+          <li><code>project</code> — pick columns (like SQL <code>SELECT</code>).</li>
+          <li><code>summarize</code> — group + aggregate (like SQL <code>GROUP BY</code>). <code>summarize count() by location</code>.</li>
+          <li><code>join kind=leftanti</code> — "rows on the left that are NOT in the right." This is how you find <em>missing</em> things — VMs without an extension, subs without a policy assignment.</li>
+        </ul>
+
+        <p><strong>Five more you'll see in real queries:</strong></p>
+        <ul>
+          <li><code>arg_max(TimeGenerated, *)</code> — "latest record per group." Pair with <code>summarize</code>. The workhorse for "current state from a time series."</li>
+          <li><code>mv-expand properties.networkProfile.ipConfigurations</code> — break arrays / nested JSON into rows so you can filter them.</li>
+          <li><code>bin(TimeGenerated, 1h)</code> — time-bucket. Use with <code>summarize</code> for "alerts per hour."</li>
+          <li><code>let varName = ...;</code> — define a query-scope variable. Readability + reuse.</li>
+          <li><code>materialize(expr)</code> — hint that an expensive subquery should be computed once and cached. Big perf wins.</li>
+        </ul>
+
+        <p><strong>Joins beyond <code>leftanti</code></strong>:</p>
+        <ul>
+          <li><code>inner</code> — rows in both sides. (SQL <code>INNER JOIN</code>.)</li>
+          <li><code>innerunique</code> — KQL's <i>default</i>; dedups the left side. Surprises SQL people.</li>
+          <li><code>leftouter</code> — all left, matched right or null. (SQL <code>LEFT JOIN</code>.)</li>
+          <li><code>leftanti</code> — left rows with no match. Use to find what's <i>missing</i>.</li>
+          <li><code>leftsemi</code> — left rows with at least one match, but only left columns.</li>
+        </ul>
+
+        <p><strong>Case-sensitivity gotcha</strong>: <code>==</code> is case-sensitive in KQL. Use
+        <code>=~</code> for case-insensitive. This bites you on tag names every time —
+        <code>tags.owner</code> won't match <code>tags.Owner</code> with <code>==</code>.</p>
+
+        <hr>
+        <p><strong>Where does KQL run? Two answers.</strong></p>
+        <p>You will hit both — they speak the same language but cover different surfaces:</p>
+        <ul>
+          <li><strong>Log Analytics workspaces (LA)</strong> — for <em>logs and time-series</em> ingested
+          via the Azure Monitor Agent or Diagnostic Settings. Queries lean on
+          <code>TimeGenerated</code>. Used by Sentinel, Defender for Cloud alerts,
+          App Insights, custom app logs.</li>
+          <li><strong>Azure Resource Graph (ARG)</strong> — for the <em>live inventory snapshot</em> of every
+          resource across every subscription you have RBAC on. <b>No time
+          dimension, no ingestion lag.</b> Used by Defender for Cloud Inventory,
+          Azure Policy compliance views, the Resource Graph Explorer blade.</li>
+        </ul>
+
+        <p><strong>Decision rule (memorize)</strong>:</p>
+        <div class="callout">
+          Time-series / historical / log lines &nbsp;→ <strong>Log Analytics</strong>.<br>
+          "What exists right now and where" &nbsp;→ <strong>Resource Graph</strong>.
+        </div>
+
+        <p><strong>Resource Graph quirks</strong> (the docs are quiet about these):</p>
+        <ul>
+          <li>Requires <b>Reader</b> RBAC on every subscription you want to see. Missing RBAC = 0 results, not an error. Easy gap.</li>
+          <li><b>Throttling</b>: ~15 queries / 5 sec / user; ~1000 / 15 min / tenant. Bursts get HTTP 429.</li>
+          <li>Tables vary by feature: <code>Resources</code>, <code>ResourceContainers</code>, <code>PolicyResources</code>, <code>SecurityResources</code>, <code>AdvisorResources</code>, <code>HealthResources</code>, <code>MaintenanceResources</code>.</li>
+          <li><b>ARG KQL ≠ Log Analytics KQL.</b> You can't join an ARG query to a Log Analytics workspace. Different engines.</li>
+          <li>Save queries to <b>Resource Graph Explorer → Saved queries</b> and pin to an Azure dashboard for ongoing tracking.</li>
+        </ul>
+
+        <p>Open <strong>Lab Bench → KQL playground</strong> to try the operators against three sample tables.</p>
+      `,
+    },
+    fieldNotes: [
+      '<b>AWS Config is the #1 surprise cloud bill.</b> Recorder + rules org-wide can easily run several $$$/month. Estimate cost <i>before</i> enabling org-wide — change-triggered rules on high-churn resources (EC2 instances, ENIs) multiply fast.',
+      '<b>Config Aggregator lag</b>: results in the aggregator trail the source account by minutes to hours. Auditor asks "is this fixed?" — don\'t trust the aggregator instantly. Verify against the source.',
+      'Change-triggered Config rules ≈ near real-time. Periodic rules have a <b>24h max interval</b>. Pick based on the rule\'s urgency, not on Lambda cost (the cost difference is usually negligible).',
+      'Custom Lambda Config rules need <code>config.amazonaws.com</code> permission to invoke them — easy gap. If your custom rule "doesn\'t evaluate," check the Lambda resource policy first.',
+      '<b>AWS Config Guard DSL</b> is declarative. Great for "must have tag X" rules without writing Lambda. Faster to author, faster to review.',
+      '<b>Defender for Cloud pricing</b>: free CSPM = posture + recommendations + Secure Score. Paid CWP = per-resource Defender plans. Servers Plan 2 ≈ <b>$15/server/month</b>; Storage ≈ <b>$10/account/month</b>; SQL is per-DTU. These are the procurement pushback numbers.',
+      '<b>Suppression ≠ exemption.</b> Suppression hides the rec from the dashboard. Exemption modifies the underlying policy assignment. <b>Auditors read exemptions, not suppressions.</b> Choose based on whether you want this on the audit trail.',
+      '<b>MCSB compliance % ≠ Secure Score.</b> Different math, different denominator. Don\'t quote them as the same number in a meeting.',
+      '<b>MDE P1 vs P2</b>: P1 is AV only — no real EDR, no ASR, no auto-investigation. P2 is the full product. Procurement asks constantly; the right answer is almost always P2 for servers.',
+      '<b>MMA agent is deprecated.</b> AMA (Azure Monitor Agent) is the future. If you inherit an estate with MMA, plan the migration now — it will break in 2026 otherwise.',
+      'For org-wide audit questions, <b>Resource Graph + KQL beats clicking through the portal</b> every time. Save the query, pin it to a dashboard, screenshot the result with a date stamp. That\'s evidence.',
+    ],
     handsOn: {
       intro: 'Two exercises on detective controls. Both are self-contained — no external docs to open.',
       steps: [
         {
           label: 'Q1',
-          question: 'Read the custom Config rule code in the AWS panel above. What two changes do you make to require BOTH <code>Owner</code> AND <code>CostCenter</code> tags (not just <code>Owner</code>)?',
+          question: `Here is the custom Config rule from the AWS panel (repeated inline so you don't scroll):
+<pre><code>exports.handler = async (event) =&gt; {
+  const item = JSON.parse(event.invokingEvent).configurationItem;
+  const tags = item.tags || {};
+  const compliant = "Owner" in tags &amp;&amp; tags.Owner.length &gt; 0;
+  return {
+    Compliance: compliant ? "COMPLIANT" : "NON_COMPLIANT",
+    Annotation: compliant ? "Has Owner tag" : "Missing Owner tag",
+  };
+};</code></pre>
+<strong>What two changes do you make to require BOTH <code>Owner</code> AND <code>CostCenter</code> tags (not just <code>Owner</code>)?</strong>`,
           hint: 'The <code>compliant</code> variable is a boolean expression — extend it. Then make the annotation explain which tag is missing so on-call can act.',
           answer: `<ol>
 <li><strong>Extend the compliance check</strong> to AND the second tag:
@@ -500,13 +711,16 @@ return {
       'Managed rules ≈ 250 ready-to-go checks. Custom rules = your own Lambda.',
       'Azure does the same job across Azure Policy (audit) + Defender for Cloud (dashboard) + MCSB (baseline initiative).',
       'Secure Score = % of Defender recommendations remediated.',
-      'Defender for Endpoint is the EDR layer; it feeds findings into Defender for Cloud.',
+      'Defender for Endpoint (MDE) is its own product — the on-host EDR. P1 = AV only; P2 = full EDR + ASR + auto-investigation. Don\'t confuse with Defender for Cloud.',
+      'KQL is the read-only query language. Log Analytics for time-series / logs; Resource Graph for live inventory across subs.',
     ],
     talkingPoints: [
       `"Config records every resource change; Config Rules turn those records into compliance verdicts."`,
       `"On Azure we do the same thing with Azure Policy in audit mode, surfaced through Defender for Cloud."`,
       `"MCSB is our built-in security baseline initiative — we assign it once at the MG root and get continuous compliance scoring."`,
       `"Secure Score going down means a Defender recommendation flipped non-compliant — we triage by severity."`,
+      `"MDE P1 is AV only — P2 is what gives us real EDR plus ASR rules. We're on P2 across servers."`,
+      `"For org-wide audit questions we use Resource Graph with KQL — one query, all subscriptions, no portal-clicking."`,
       `"Custom Config rules are Lambdas. Most of the time, a managed rule already exists — check the catalog first."`,
     ],
     explainBackKey: 'fnd3_detection',
@@ -609,6 +823,18 @@ return {
             │
             ▼
        Hand to the team`,
+    fieldNotes: [
+      '<b>CT drift detection runs hourly.</b> Don\'t ignore drift notifications — that\'s a guardrail that has silently failed. Re-enroll the OU/account to fix.',
+      '<b>Customizing CT requires CfCT</b> (Customizations for Control Tower) — it adds CodePipeline + CFN StackSets to your CT management account. Adopt it before you have ten one-off scripts.',
+      '<b>AFT (Account Factory for Terraform)</b> is the production pattern for multi-account at scale. Raw Account Factory is fine for tiny orgs (<20 accounts); AFT is what big orgs use.',
+      '<b>You cannot disable Mandatory CT controls.</b> You CAN opt out of "Strongly Recommended" — but auditors ask "why is this off?" Document the reason before you opt out, not after the auditor calls.',
+      'CT control tiers (memorize the language — auditors use it): <b>Mandatory</b> · <b>Strongly Recommended</b> · <b>Elective</b>.',
+      'CT enrollment takes 30+ minutes and is <b>hard to undo</b>. Test in a sandbox AWS org before enabling in production. Disabling CT can leave orphaned resources behind.',
+      'Region-deny SCP via CT covers <b>regional</b> services. Global services (IAM, Route 53, CloudFront, Organizations, Billing) remain accessible — by design, but auditors ask why.',
+      '<b>Azure has no single "Control Tower" product.</b> Landing zone = MG hierarchy + MCSB initiative + a subscription-vending pipeline (Terraform / Bicep / Azure DevOps). The pipeline IS the contract — document what it configures.',
+      'Subscription vending pipeline outputs: which baseline policies apply, which RBAC defaults, which diagnostic settings, which tags are required. Without that doc, new-sub onboarding becomes a tribal-knowledge nightmare.',
+      'Never trust a "landing zone is set up" claim until you <b>verify</b>: SCPs/policies enforced, log archive receiving, Defender enabled, new account/sub inherited everything. T3 walks you through this verification.',
+    ],
     handsOn: {
       intro: 'A two-part design question on preventive controls. The artifact differs between AWS and Azure — name both and the trade-off.',
       steps: [
@@ -777,12 +1003,36 @@ resource "azurerm_management_group_policy_assignment" "mcsb_at_workloads" {
    terraform apply   ← executes the diff, updates remote state
        │
        └─ on a regular cadence: detect drift via "plan -refresh-only"`,
+    fieldNotes: [
+      '<code>terraform plan</code> ≠ <code>terraform apply</code>. Plan reads state from the backend; if state is stale, plan can lie. Run <code>terraform refresh</code> (or <code>plan -refresh-only</code>) first when you suspect drift.',
+      'State files can hold <b>secrets</b> — especially after <code>terraform import</code> of resources with sensitive properties (Key Vault secrets, RDS passwords, KMS material). Treat state as secret. Encrypt the backend; restrict access.',
+      'Modules must <b>pin to versions</b>: <code>source = "git::...?ref=v1.4.2"</code>. Never pin to <code>main</code> in production — upstream rev moves and your apply changes behavior.',
+      '<b><code>for_each</code> vs <code>count</code></b>: <code>count</code> reorders destroys when an item is removed mid-list (taints everything after). <code>for_each</code> with a map keeps identity stable. Prefer <code>for_each</code>; reserve <code>count</code> for "0 or 1" toggles.',
+      'CI provider auth: <b>OIDC federation</b> (GitHub Actions → AWS via <code>aws-actions/configure-aws-credentials</code>, → Azure via federated credentials on a service principal) beats long-lived secrets. The 2026 default.',
+      '<b>Lock the state file</b> during apply: <code>-lock-timeout=10m</code>. Concurrent applies destroy state. The backend (S3+DynamoDB or Azure Storage with blob lease) should enforce this — verify it is.',
+      '<b>Resource Graph + Terraform import</b>: query inventory with KQL, generate Terraform <code>import</code> blocks programmatically. The modern path to onboard pre-existing Azure resources into Terraform management.',
+      'For Azure Policy in Terraform, prefer <b>initiative assignment</b> (one resource) over per-policy assignments (N resources). Fewer state objects, faster plan, easier rollback.',
+      '<b>State recovery</b>: if state corrupts, restore from backend versioning (S3 object versions, Azure Storage blob versions) — minutes. <code>terraform import</code> from scratch — hours to days. Make sure backend versioning is on.',
+      '<b>The compliance value of Terraform</b>: every guardrail change is a PR, every PR has a diff, every diff has an approver, every apply has a log. That\'s the audit trail. Don\'t click-ops Azure Policy in production.',
+    ],
     handsOn: {
       intro: 'Two reading exercises on the Terraform examples above. The skill is reading config that someone else wrote.',
       steps: [
         {
           label: 'Q1',
-          question: 'In the AWS Terraform example, where is the SCP <em>attached</em>? If you DELETE the <code>aws_organizations_policy_attachment "to_workloads"</code> resource block from the .tf file and re-run <code>terraform apply</code>, what does Terraform do?',
+          question: `Here is the AWS Terraform snippet from the panel above (repeated so you don't scroll):
+<pre><code>resource "aws_organizations_policy" "deny_regions" {
+  name = "deny-other-regions"
+  type = "SERVICE_CONTROL_POLICY"
+  content = jsonencode({ /* SCP JSON */ })
+}
+
+resource "aws_organizations_policy_attachment" "to_workloads" {
+  policy_id = aws_organizations_policy.deny_regions.id
+  target_id = "ou-abcd-1234workloads"
+}</code></pre>
+<strong>(a) Where is the SCP <em>attached</em>?</strong><br>
+<strong>(b) If you DELETE the <code>aws_organizations_policy_attachment "to_workloads"</code> block from the .tf file and re-run <code>terraform apply</code>, what does Terraform do? What is the real-world effect on accounts under Workloads OU?</strong>`,
           hint: 'Look for the resource whose name ends in <code>_attachment</code>. Terraform reconciles config to state — a deleted resource means destroy.',
           answer: `<ul>
 <li><strong>Attached at:</strong> the <strong>Workloads OU</strong> (<code>target_id = "ou-abcd-1234workloads"</code>). Note that <code>aws_organizations_policy</code> only <em>defines</em> the policy object; the separate <code>aws_organizations_policy_attachment</code> resource is what actually binds it to a target. Define + attach are two distinct operations in AWS Organizations.</li>
@@ -793,8 +1043,20 @@ resource "azurerm_management_group_policy_assignment" "mcsb_at_workloads" {
         },
         {
           label: 'Q2',
-          question: 'What is the difference between <code>data "azurerm_policy_set_definition"</code> and <code>resource "azurerm_policy_set_definition"</code>? When do you use each?',
-          hint: '<code>data</code> looks something up. <code>resource</code> creates / manages something.',
+          question: `Here is the Azure Terraform snippet from the panel above (repeated):
+<pre><code>data "azurerm_policy_set_definition" "mcsb" {
+  display_name = "Microsoft cloud security benchmark"
+}
+
+resource "azurerm_management_group_policy_assignment" "mcsb_at_workloads" {
+  name                 = "mcsb-workloads"
+  management_group_id  = "/providers/Microsoft.Management/managementGroups/workloads"
+  policy_definition_id = data.azurerm_policy_set_definition.mcsb.id
+  display_name         = "MCSB - Workloads"
+  enforce              = true
+}</code></pre>
+<strong>What is the difference between <code>data "azurerm_policy_set_definition"</code> and <code>resource "azurerm_policy_set_definition"</code>? When would you use each? Why does the example use <code>data</code> for MCSB?</strong>`,
+          hint: '<code>data</code> looks something up. <code>resource</code> creates / manages something. MCSB is a built-in Microsoft-managed initiative — Terraform doesn\'t create it.',
           answer: `<ul>
 <li><strong><code>data</code> block</strong> — a read-only <em>lookup</em>. Terraform asks the provider for an existing object and returns its attributes (e.g., <code>.id</code>). The example uses <code>data "azurerm_policy_set_definition" "mcsb"</code> because MCSB is a built-in Microsoft-managed initiative — Terraform must NOT try to create it; it just needs the ID to make the assignment.</li>
 <li><strong><code>resource</code> block</strong> — a <em>managed</em> object. Terraform creates it, updates it on change, destroys it on removal. <code>resource "azurerm_policy_set_definition" "corp_security"</code> is how you would define a custom company initiative.</li>

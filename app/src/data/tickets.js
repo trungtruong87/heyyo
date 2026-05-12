@@ -30,6 +30,11 @@ export const TICKETS = [
                Auditor asked yesterday for proof we've eliminated them. Right
                now we cannot give that proof.`,
     },
+    doneWhen: [
+      'SCP JSON is valid: <code>Effect: "Deny"</code>, action list covers the IAM user surface (<code>CreateUser</code>, <code>CreateLoginProfile</code>, <code>CreateAccessKey</code> at minimum), <b>without</b> blocking <code>CreateRole</code> / <code>CreateServiceLinkedRole</code>.',
+      'Proposed attach point is the <b>org root</b> (not the Dev OU) — and you can articulate why (broadest blast radius, no future OU can re-permit).',
+      'Plan addresses BOTH halves: a preventive SCP for new IAM users AND a one-time cleanup of the existing user. Detective rule alone is not the fix.',
+    ],
     investigate: {
       summary: 'Open the SCP + IAM lab bench and trace what happens today.',
       steps: [
@@ -59,6 +64,45 @@ export const TICKETS = [
                <code>iam:CreateAccessKey</code> at minimum). Keep
                <code>iam:CreateRole</code> and <code>iam:CreateServiceLinkedRole</code>
                OUT of the deny list — those are still needed.`,
+      steps: [
+        {
+          label: 'Skeleton — declare the policy and one Deny statement',
+          body: `<p>Start with an IAM policy skeleton: <code>Version</code> + a single <code>Statement</code> with <code>Effect: "Deny"</code> and a wildcard <code>Resource</code>. Leave the Action list empty for now.</p>
+<pre><code>{
+  "Version": "2012-10-17",
+  "Statement": [{
+    "Sid": "DenyIAMUsersAndKeys",
+    "Effect": "Deny",
+    "Action": [],
+    "Resource": "*"
+  }]
+}</code></pre>`,
+        },
+        {
+          label: 'Minimum surface — block the three obvious actions',
+          body: `<p>Now fill the Action list with the three actions that <i>create</i> an IAM user identity. This is the minimum that closes the gap the detective rule caught:</p>
+<pre><code>"Action": [
+  "iam:CreateUser",
+  "iam:CreateLoginProfile",
+  "iam:CreateAccessKey"
+]</code></pre>
+<p>A junior engineer would stop here. A senior would not — there are more actions that <i>extend</i> a user's lifetime.</p>`,
+        },
+        {
+          label: 'Production surface — close the long-lived-credential adjacencies',
+          body: `<p>Add the actions that prolong a user credential's life or attach another login surface to it. Also tighten <code>Resource</code> to the IAM user ARN pattern so role/service-linked-role actions are not even matched.</p>
+<pre><code>"Action": [
+  "iam:CreateUser",
+  "iam:CreateLoginProfile",
+  "iam:CreateAccessKey",
+  "iam:UpdateAccessKey",
+  "iam:UploadSigningCertificate",
+  "iam:UploadSSHPublicKey"
+],
+"Resource": "arn:aws:iam::*:user/*"</code></pre>
+<p>Verify: <code>iam:CreateRole</code> and <code>iam:CreateServiceLinkedRole</code> are NOT in the list. Those are needed for normal workload operations.</p>`,
+        },
+      ],
       artifactKind: 'scp',
       starter: `{
   "Version": "2012-10-17",
@@ -104,6 +148,13 @@ export const TICKETS = [
       `"For the existing user, I'll open a cleanup PR; the SCP only stops new ones."`,
       `"After this lands the Config rule should report zero non-compliant resources within an hour."`,
     ],
+    production: [
+      'Announce the new deny in <code>#platform-changes</code> 24h before enabling. Workload teams scream when their CI breaks at 3pm Friday with no warning.',
+      'Run the SCP in <b>audit-only via Service Authorization analyzer</b> for ~1 week before flipping to enforce. Catches the workload you didn\'t know was creating IAM users.',
+      'Service-linked roles are exempt from SCPs. Before you sign off, confirm CloudFormation, AWS Config, and other service principals you depend on aren\'t affected.',
+      '<b>Document the exception process IN ADVANCE.</b> The first exception request lands within 48h of enforce. Have a JIRA template + an SLA before you need them.',
+      'After enforce, alarm CloudWatch on <code>AccessDenied</code> events that mention <i>"explicit deny in a service control policy"</i> for 2 weeks — that\'s your "we broke a workload" canary.',
+    ],
     explainBackKey: 'tkt1_scp',
   },
 
@@ -116,16 +167,22 @@ export const TICKETS = [
     cloud: 'aws',
     brief: {
       reporter: 'FinOps + Compliance lead',
-      plain: `Cost allocation depends on every resource carrying an "Owner"
-              tag. The managed rule <code>required-tags</code> works for
-              parameter-style "must have these tag keys" but not for the
-              extra rule we want: Owner must look like an email
-              (contains "@"). FinOps needs a CUSTOM Config rule that
-              evaluates per-resource and emits NON_COMPLIANT for anything
-              missing or malformed.`,
+      plain: `<b>FinOps</b> (the team that allocates cloud spend back to
+              business units for chargeback) depends on every resource
+              carrying an "Owner" tag. The managed rule
+              <code>required-tags</code> works for the simple "must have
+              these tag keys" case — but not for the extra rule we want:
+              Owner must look like an email (contains "@"). FinOps needs
+              a <b>CUSTOM</b> Config rule that evaluates per-resource
+              and emits NON_COMPLIANT for anything missing or malformed.`,
       stakes: `Without this we can't bill back accurately. CFO escalation
                is one cycle away.`,
     },
+    doneWhen: [
+      'Lambda handler returns <code>{ Compliance: "COMPLIANT" | "NON_COMPLIANT", Annotation: "&lt;reason&gt;" }</code> per evaluated resource.',
+      'Validates Owner tag is <b>present</b> AND <b>contains "@"</b> — annotation distinguishes missing vs malformed.',
+      'Trigger type chosen with a reason. (For "tag added/removed/changed," configuration-change is correct; periodic is overkill and adds 24h lag.)',
+    ],
     investigate: {
       summary: 'Read the existing managed rule and decide if custom is really needed.',
       steps: [
@@ -150,6 +207,45 @@ export const TICKETS = [
       prompt: `Write the Lambda handler that validates the Owner tag exists AND
                matches a basic email pattern. Return COMPLIANT or
                NON_COMPLIANT with an annotation explaining why.`,
+      steps: [
+        {
+          label: 'Skeleton — read the resource, return a default verdict',
+          body: `<p>Config invokes your Lambda with the resource snapshot in <code>event.invokingEvent</code>. Parse it, pull out <code>tags</code>, and return COMPLIANT for now.</p>
+<pre><code>exports.handler = async (event) => {
+  const item = JSON.parse(event.invokingEvent).configurationItem;
+  const tags = item.tags || {};
+  return {
+    Compliance: "COMPLIANT",
+    Annotation: "TBD"
+  };
+};</code></pre>`,
+        },
+        {
+          label: 'Validate presence — does Owner exist and is it non-empty?',
+          body: `<p>First check Owner is set. If it isn't, fail loudly and name the issue in the annotation — that string is what FinOps reads in the Config console.</p>
+<pre><code>const owner = tags.Owner;
+if (!owner || owner.length === 0) {
+  return {
+    Compliance: "NON_COMPLIANT",
+    Annotation: "Missing required tag: Owner"
+  };
+}</code></pre>`,
+        },
+        {
+          label: 'Validate format — must contain "@"',
+          body: `<p>Now check the email shape. Don't over-engineer with a full RFC regex — "contains @" is the bar FinOps actually wants. Make the annotation explain <i>which</i> failure occurred so the on-call doesn't have to dig.</p>
+<pre><code>if (!owner.includes("@")) {
+  return {
+    Compliance: "NON_COMPLIANT",
+    Annotation: \`Owner tag is malformed (no "@"): "\${owner}"\`
+  };
+}
+return {
+  Compliance: "COMPLIANT",
+  Annotation: \`Owner tag valid: \${owner}\`
+};</code></pre>`,
+        },
+      ],
       artifactKind: 'lambda',
       starter: `// Custom Config rule: Owner tag must exist and look like an email
 exports.handler = async (event) => {
@@ -193,6 +289,13 @@ exports.handler = async (event) => {
       `"Annotation string tells FinOps exactly why each resource failed — missing vs malformed."`,
       `"This is a candidate for org-wide aggregator visibility — one dashboard for all accounts."`,
     ],
+    production: [
+      'Estimate per-resource evaluation cost BEFORE deploying. Change-triggered on a high-churn type (EC2 instances, ENIs, EBS volumes) can <b>10x your Config bill</b> in a month.',
+      'Alarm on the custom Lambda\'s error rate. A silently failing rule reports "no non-compliant resources" — which looks like success but is actually data missing.',
+      'Use the <b>Config Aggregator</b> for org-wide reporting, not per-account dashboards. Auditors want one number across the org.',
+      'Auto-remediation via SSM document: only enable after a week of <b>"annotate but don\'t fix"</b>. Humans need lead time to fix bad data before the bot starts changing things.',
+      'Tag the rule with owner + JIRA + intent in the description field. Six months later you (or your replacement) will forget why it exists. Save them the archaeology.',
+    ],
     explainBackKey: 'tkt2_config',
   },
 
@@ -205,15 +308,24 @@ exports.handler = async (event) => {
     cloud: 'aws',
     brief: {
       reporter: 'Platform team',
-      plain: `A new account "data-eng-sandbox-2" was just vended through Account
-              Factory into the Sandbox OU. Before we hand it to the team, we
-              need to verify all mandatory CT controls applied, the recommended
-              ones we've enabled at Sandbox OU are present, and our org-root
-              SCPs are inherited. The team is waiting to start work.`,
+      plain: `This is the <b>day-1 acceptance check</b> a new account goes
+              through before the workload team gets handed the keys. A new
+              account "data-eng-sandbox-2" was just <i>vended</i>
+              (provisioned via Control Tower's <b>Account Factory</b>) into
+              the Sandbox OU. Before we hand it over, we need to verify
+              all <b>Mandatory CT controls</b> applied, the <b>Strongly
+              Recommended</b> ones we've enabled at Sandbox OU are present,
+              and our org-root SCPs are inherited. The team is waiting to
+              start work.`,
       stakes: `If a control is missing they could create resources we can\'t
                govern. We don\'t want to revoke access mid-day; verify
                first.`,
     },
+    doneWhen: [
+      'All <b>Mandatory CT controls</b> confirmed present on the new account (preventive SCPs + detective Config rules at minimum).',
+      '<b>Strongly Recommended</b> controls enabled at Sandbox OU confirmed inherited; any opt-outs documented with reason.',
+      'A short <b>hand-off note</b> written for the workload team: what\'s blocked, who to ask for an exemption, where to read denied actions.',
+    ],
     investigate: {
       summary: 'Walk the control inventory by type — P/D/P.',
       steps: [
@@ -238,6 +350,31 @@ exports.handler = async (event) => {
       prompt: `Write a short verification checklist (markdown) that the next
                on-call can use. Cover the three control types and one
                cross-check. Keep it under 12 lines.`,
+      steps: [
+        {
+          label: 'List the three control types as headings',
+          body: `<p>Start with the P-D-P structure as a skeleton. Each section will get a one-line "what to click, what to confirm" bullet underneath.</p>
+<pre><code>## CT account verification checklist
+
+- [ ] Preventive (SCPs): ...
+- [ ] Detective (Config rules): ...
+- [ ] Proactive (CFN Hooks): ...</code></pre>`,
+        },
+        {
+          label: 'Fill in what to look at and what "good" looks like',
+          body: `<p>For each row, name the exact console + the success signal. The next on-call shouldn\'t have to think.</p>
+<pre><code>- [ ] **Preventive SCPs** — Organizations console; SCPs on path Root → OU → account list DenyNonAllowedRegions + DenyIAMUsers.
+- [ ] **Detective rules** — Config console (assume role in new account); expected rules listed AND status = EVALUATING (not "Insufficient data").
+- [ ] **Proactive Hooks** — deploy a deliberately bad CFN template; deploy must FAIL with hook violation.</code></pre>`,
+        },
+        {
+          label: 'Add the cross-checks an auditor cares about',
+          body: `<p>Two more bullets the workload team forgets but the auditor opens with: <b>logging</b> (CloudTrail flowing to the central archive) and <b>identity</b> (IAM Identity Center permission set attached).</p>
+<pre><code>- [ ] **Account Factory status** — CT dashboard shows account "Available," no deployment errors.
+- [ ] **Logging** — CloudTrail trail exists; logs delivered to central log-archive bucket.
+- [ ] **Identity** — IAM Identity Center permission set for the team is attached.</code></pre>`,
+        },
+      ],
       artifactKind: 'note',
       starter: `## CT account verification checklist\n\n- [ ] \n- [ ] \n- [ ] \n- [ ] `,
       sample: `## Control Tower account verification
@@ -263,6 +400,13 @@ exports.handler = async (event) => {
       `"Identity, logging, and CloudTrail wiring are all confirmed on the central side."`,
       `"I left a 6-item checklist in the runbook for next time."`,
     ],
+    production: [
+      'Check the <b>drift status</b> in the CT console, not just the initial-enrollment status. Drift = a guardrail that has silently failed.',
+      'Verify the new account inherited BOTH the OU-level SCPs <b>and</b> the org-root SCPs. Newcomers check one and miss the other.',
+      'Confirm the Account Factory pipeline reported success end-to-end. Orphaned half-vended accounts are a real failure mode: network not wired, IAM Identity Center permission sets not assigned, CloudTrail not centralized.',
+      'Confirm CloudTrail logs are landing in the central log-archive bucket. That\'s what auditors actually grep — not the CT console.',
+      'Hand-off note to the workload team includes: which controls block what, who to ask for an exemption, where to read the central log of denied actions. Don\'t make them learn by hitting the wall.',
+    ],
     explainBackKey: 'tkt3_control_tower',
   },
 
@@ -286,6 +430,11 @@ exports.handler = async (event) => {
                around it (manually disabling public-access at the resource
                level), we get a compliance gap.`,
     },
+    doneWhen: [
+      'Exemption is <b>scoped at the resource</b> (or at most the resource group) — never at the MG. Smallest blast radius that still works.',
+      'Exemption has an <b>expiry ≤ 90 days</b> from today, encoded in the resource itself (<code>expiresOn</code>).',
+      'Metadata tags include: requester, JIRA ticket, business justification, <b>renewal cadence</b>. A calendar reminder is set 14 days before expiry.',
+    ],
     investigate: {
       summary: 'Review the policy and the exemption mechanism.',
       steps: [
@@ -312,6 +461,32 @@ exports.handler = async (event) => {
       prompt: `Author the exemption JSON. Target a specific storage account
                scope, set expiresOn 30 days from today, category Mitigated,
                include a description that explains the business reason.`,
+      steps: [
+        {
+          label: 'Skeleton — point at the right policy assignment',
+          body: `<p>An exemption is a tiny resource type (<code>Microsoft.Authorization/policyExemptions</code>) whose only job is to silence one assignment for one scope. Start by filling in <code>policyAssignmentId</code> with the ID of the assignment you want to waive.</p>
+<pre><code>{
+  "properties": {
+    "policyAssignmentId": "/subscriptions/.../providers/Microsoft.Authorization/policyAssignments/storage-public-blob-deny",
+    "exemptionCategory": "...",
+    "expiresOn": "..."
+  }
+}</code></pre>`,
+        },
+        {
+          label: 'Set the category and a 30-day expiry',
+          body: `<p>Pick the category honestly. <code>Mitigated</code> means "yes, the policy is right, AND we have a compensating control" (network ACL, DLP scan, etc.). <code>Waiver</code> means "we just accept the risk." For a vendor share with monitoring, <b>Mitigated</b> is the right answer.</p>
+<p><code>expiresOn</code> is non-negotiable in practice. Pick a date ≤90 days out, in ISO 8601:</p>
+<pre><code>"exemptionCategory": "Mitigated",
+"expiresOn": "2026-06-11T00:00:00Z"</code></pre>`,
+        },
+        {
+          label: 'Write the description that an auditor will read first',
+          body: `<p>The <code>description</code> is what an auditor opens before anything else. Give them everything: <b>business reason</b>, <b>compensating control</b>, <b>owner</b>, <b>ticket</b>, <b>auto-revoke date</b>.</p>
+<pre><code>"displayName": "Vendor share - data-eng-sa01",
+"description": "Vendor X requires public blob read on one container for 30 days. Mitigated by (a) network ACL allowlist of vendor egress IPs and (b) CloudApp DLP scan policy on the container. Owner: storage-eng. Ticket: T-1234. Auto-revoked 2026-06-11."</code></pre>`,
+        },
+      ],
       artifactKind: 'azpolicy',
       starter: `{
   "properties": {
@@ -347,6 +522,13 @@ exports.handler = async (event) => {
       `"After 30 days the exemption auto-expires and the policy reasserts; no manual cleanup needed."`,
       `"If the vendor needs an extension, we re-evaluate — we don't just bump the date."`,
     ],
+    production: [
+      'Exemption MUST have an <b>expiry</b>. Default is 90 days, never "permanent." Permanent exemptions become audit findings — that\'s the language auditors use.',
+      'Tag the exemption with: requester, JIRA ticket, business justification, renewal cadence. Auditors will ask all four. Skip any of them and you fail the question.',
+      'Notify the workload owner <b>14 days before expiry</b>. Exemptions that lapse silently re-block production at 2am — and the workload owner will blame compliance, not the calendar.',
+      'Scope as tightly as possible: subscription scope &gt; resource group scope &gt; MG scope. Blast radius rule — the exemption shouldn\'t cover more than it has to.',
+      'Track exemption count over time. <b>Steady growth = your policy is wrong for the org</b>, not "we need more exemptions." Talk to the policy owner; consider relaxing the policy itself.',
+    ],
     explainBackKey: 'tkt4_az_exemption',
   },
 
@@ -368,6 +550,11 @@ exports.handler = async (event) => {
                raise questions. Fast triage matters more than a perfect
                answer.`,
     },
+    doneWhen: [
+      'Each unhealthy high-severity rec is mapped to its <b>MCSB control ID</b> (e.g., <code>NS-1</code>, <code>ES-1</code>, <code>LT-4</code>) <i>and</i> its underlying Azure Policy definition.',
+      'For each rec: <b>action + owner + ETA</b> identified. Auto-remediate / plan / exempt — pick one with reason.',
+      'Score recovery projection given (e.g., <i>"70 → 75 by EOD, 79 by Friday"</i>). Stakeholders want a number, not a "we\'re working on it."',
+    ],
     investigate: {
       summary: 'Triage by severity, then by underlying policy.',
       steps: [
@@ -392,6 +579,40 @@ exports.handler = async (event) => {
       prompt: `Write a triage note (markdown) listing the 3 hypothetical recs, your
                proposed action for each, and the MCSB control mapping. Use
                this as the standup update.`,
+      steps: [
+        {
+          label: 'Header — the number stakeholders want',
+          body: `<p>Open with the secure-score delta. That's the line that gets read aloud in standup.</p>
+<pre><code># Secure score triage 2026-05-09
+
+Drop: 78% → 70% (-8)
+
+## Recommendations triaged
+
+1. ...
+2. ...
+3. ...</code></pre>`,
+        },
+        {
+          label: 'Per-rec body — name + MCSB control + scope + count',
+          body: `<p>For each unhealthy rec, fill in four facts before you decide anything: <b>the rec name</b>, <b>the MCSB control ID</b>, <b>where</b> (subs / RGs / VMs), and <b>how many</b>. This is the part the auditor checks against, not the action.</p>
+<pre><code>1. **Storage accounts should require secure transfer** (MCSB NS-2)
+   - 4 storage accounts unhealthy; 3 dev sandbox, 1 shared services.
+2. **Machines should have endpoint protection installed** (MCSB ES-1)
+   - 6 VMs missing MDE in the new "data-eng" sub.
+3. **Diagnostic logs in Key Vault should be enabled** (MCSB LT-4)
+   - 2 vaults, both prod.</code></pre>`,
+        },
+        {
+          label: 'Action + ETA per rec, then score-recovery projection',
+          body: `<p>Now apply the triage matrix (severity × remediation cost × user impact) and write the action with a date. Close with a projection — stakeholders want a number for "when will this be back."</p>
+<pre><code>1. Storage / NS-2: <b>auto-remediate</b> dev today (set publicNetworkAccess=Disabled); plan shared services for the change window. ETA: 3 today, 1 this week.
+2. MDE / ES-1: <b>assign existing initiative</b> at Workloads MG. DINE will install on next eval. ETA: assignment today, rollout 24h.
+3. Key Vault / LT-4: <b>PR to terraform-keyvault module</b> adding diagnostic settings. ETA: PR today, apply tomorrow.
+
+Score recovery: 70 → 75 by EOD, 75 → 79 by Friday.</code></pre>`,
+        },
+      ],
       artifactKind: 'note',
       starter: `# Secure score triage 2026-05-09\n\nDrop: 78% → 70% (-8)\n\n## Recommendations triaged\n\n1. \n2. \n3. `,
       sample: `# Secure score triage 2026-05-09
@@ -431,6 +652,13 @@ Score recovery: expect 70 → 75 by EOD, 75 → 79 by Friday.`,
       `"For the MDE gap, the policy exists but wasn't assigned at the new MG — that's the real fix."`,
       `"Expect score recovery to 79% by Friday."`,
     ],
+    production: [
+      'Triage matrix: <b>(severity × remediation cost × user impact)</b>. Auto-remediations of low-impact go first; manual fixes wait for the change window; high-cost + high-impact goes to a planning meeting.',
+      'The "MDE not installed" pattern in this ticket is almost always missing initiative assignment at the new MG, not a broken policy. Check the assignment scope before debugging the policy logic.',
+      'Set up <b>Workflow Automation</b> (Logic Apps) to open a ticket on every new high-severity rec. Don\'t scan the dashboard manually every morning — automate the inbox.',
+      'Continuous-export Defender alerts and recommendations to <b>Log Analytics</b>. The portal only shows current state. KQL over the LA history is how you spot trends ("3 new public-storage recs this week — what changed?").',
+      'Maintain a <code>compliance-runbooks/</code> repo: one markdown file per recommendation type with the standard remediation steps. Saves ~30 min per ticket and onboards new team members faster.',
+    ],
     explainBackKey: 'tkt5_defender',
   },
 
@@ -449,9 +677,27 @@ Score recovery: expect 70 → 75 by EOD, 75 → 79 by Friday.`,
               finds these accounts across all subs, and (after a confirmation
               tag check) disables public access. The runbook reports its
               actions back to a Log Analytics workspace.`,
+      primer: `A <b>Runbook</b> is a script (PowerShell or Python) that an
+               <b>Automation account</b> runs on a schedule or on demand.
+               Think "cron job with Azure auth baked in." The Automation
+               account is the container; the Runbook is the script; the
+               <b>Managed Identity</b> is the credential it uses to talk to
+               Azure. <b>Two flavors of identity:</b> <i>System-Assigned</i>
+               (tied to the Automation account, the default) vs
+               <i>User-Assigned</i> (shared across resources, the production
+               pattern). <b>Runtime:</b> PowerShell 7.2 is the default now —
+               5.1 is legacy and has stale Az module versions. <b>Don't use
+               Runbooks for sub-second remediation</b> — use Logic Apps +
+               Event Grid. Runbooks are for scheduled or batch work.`,
       stakes: `Manual remediation can't keep up with the rate of new
                sandbox subs. A scheduled runbook closes the gap fast.`,
     },
+    doneWhen: [
+      'Runbook authenticates via <b>Managed Identity</b> (<code>Connect-AzAccount -Identity</code>) — no embedded credentials anywhere.',
+      'Acts only on storage accounts where <code>publicNetworkAccess == "Enabled"</code> AND tag <code>complianceWaiver != "true"</code>. Tag is the owner\'s controlled escape hatch.',
+      'Every action (or skip) writes a row to a custom Log Analytics table via the Data Collector API — audit trail.',
+      'Schedule defined (e.g., <i>hourly</i>) with a buffer so the runbook doesn\'t overlap itself.',
+    ],
     investigate: {
       summary: 'Map the runbook to its Azure pieces.',
       steps: [
@@ -478,6 +724,49 @@ Score recovery: expect 70 → 75 by EOD, 75 → 79 by Friday.`,
                loop subscriptions, find non-compliant storage accounts, respect
                the complianceWaiver tag, set publicNetworkAccess=Disabled, log
                each action. Keep it under 50 lines.`,
+      steps: [
+        {
+          label: 'Skeleton — managed-identity auth + the subscription loop',
+          body: `<p>Every Az runbook starts the same way: <code>Connect-AzAccount -Identity</code> uses the Automation account's identity (no creds embedded), then you enumerate subs and switch context per sub.</p>
+<pre><code>Connect-AzAccount -Identity | Out-Null
+$subs = Get-AzSubscription
+
+foreach ($sub in $subs) {
+  Set-AzContext -SubscriptionId $sub.Id | Out-Null
+  $accounts = Get-AzStorageAccount
+  # next step
+}</code></pre>`,
+        },
+        {
+          label: 'Idempotency filter — skip the ones that don\'t need action',
+          body: `<p>You'll run this hourly. Most accounts will already be compliant; act only on the few that aren't. <b>Two filters:</b> already-disabled (skip), AND tag <code>complianceWaiver = true</code> (skip — owner has a controlled exception).</p>
+<pre><code>foreach ($acct in $accounts) {
+  if ($acct.PublicNetworkAccess -eq 'Disabled') { continue }
+  if ($acct.Tags['complianceWaiver'] -eq 'true') {
+    Write-Output "SKIP (waiver): $($acct.StorageAccountName)"
+    continue
+  }
+  # next step — act
+}</code></pre>`,
+        },
+        {
+          label: 'Act + log to Log Analytics',
+          body: `<p>Disable public access, then write a row to a custom Log Analytics table (<code>RunbookActions_CL</code>) via the Data Collector API. The log row is your audit trail — name the storage account, sub, timestamp, and the verdict.</p>
+<pre><code>Set-AzStorageAccount -ResourceGroupName $acct.ResourceGroupName \`
+                      -Name $acct.StorageAccountName \`
+                      -PublicNetworkAccess Disabled | Out-Null
+
+$logRow = @{
+  TimeGenerated   = (Get-Date).ToUniversalTime().ToString("o")
+  Subscription    = $sub.Name
+  StorageAccount  = $acct.StorageAccountName
+  Action          = "DisabledPublicNetworkAccess"
+}
+# Send-OmsLog (Az.OperationalInsights / Data Collector API) — see worked example
+Write-Output "FIXED: $($acct.StorageAccountName)"</code></pre>
+<p>Wrap the whole loop body in <code>try/catch</code> with <code>Write-Error</code> (not <code>Throw</code>) so one bad sub doesn't kill the run.</p>`,
+        },
+      ],
       artifactKind: 'powershell',
       starter: `# Runbook: disable public network access on non-compliant storage accounts
 Connect-AzAccount -Identity | Out-Null
@@ -546,6 +835,14 @@ Write-Output "Done. Actions: $($actions.Count)"`,
       `"Idempotent: re-running the runbook on a clean environment is a no-op."`,
       `"Schedule is hourly; we can tighten if the rate of new public storage accounts increases."`,
     ],
+    production: [
+      'Use a <b>User-Assigned Managed Identity</b> in production. System-Assigned identity dies if the Automation account is recreated; user-assigned survives and can be reused across runbooks.',
+      'Use <code>Write-Error</code> (not <code>Throw</code>) on per-resource failures, so the job keeps going. One bad subscription shouldn\'t kill the entire run.',
+      'Output stream limit is ~1MB per runbook job. For anything bigger, write to Log Analytics (via the Data Collector API) or to blob storage, and emit only a pointer.',
+      'Schedule with a buffer — never schedule a 30-min runbook every 30 min. Overlapping runs cause double-remediation. Make the cadence at least 2× the worst-case runtime.',
+      'Source-control the runbook (GitHub / Azure Repos integration). A runbook visible only in the portal is an auditor\'s red flag — they can\'t see the change history.',
+      'Test in dev with a <code>-WhatIf</code> flag before flipping <code>-Force</code> on. Remediation runbooks are the easiest way to nuke production accidentally.',
+    ],
     explainBackKey: 'tkt6_runbook',
   },
 
@@ -558,15 +855,21 @@ Write-Output "Done. Actions: $($actions.Count)"`,
     cloud: 'azure',
     brief: {
       reporter: 'audit@corp',
-      plain: `For tomorrow's MCSB ES-1 review the auditor wants a CSV of all
-              VMs across every subscription that don't have the MDE
-              extension installed, with subscription, resource group, OS,
-              and last-seen timestamp. Speed > prettiness; you have ~30
-              minutes.`,
+      plain: `For tomorrow's <b>MCSB ES-1</b> review (Endpoint Security
+              control 1 — the requirement that every VM runs an EDR) the
+              auditor wants a CSV of all VMs across every subscription that
+              don't have the <b>MDE extension</b> installed, with
+              subscription, resource group, OS, and last-seen timestamp.
+              Speed > prettiness; you have ~30 minutes.`,
       stakes: `Showing up unprepared sets the wrong tone with the auditor.
                KQL is the right tool — Resource Graph queries every
                subscription you have read access to in seconds.`,
     },
+    doneWhen: [
+      'Query targets <b>Resource Graph</b> (the <code>Resources</code> table), not Log Analytics. ARG = live inventory; LA = time-series logs.',
+      'Returns VMs that <b>do not have</b> the MDE extension — pattern is a <code>leftanti</code> join (VMs minus VMs-with-extension).',
+      'Output columns: <code>subscriptionId</code>, <code>resourceGroup</code>, <code>name</code>, <code>os</code>, <code>lastSeen</code>. Date-stamped (<code>extend snapshotTime = now()</code>).',
+    ],
     investigate: {
       summary: 'Pick the right table, then write the query.',
       steps: [
@@ -592,6 +895,45 @@ Write-Output "Done. Actions: $($actions.Count)"`,
       prompt: `Write the KQL. Output columns: subscriptionId, resourceGroup,
                vmName, osType, location. Sort by subscriptionId then vmName.
                Then export to CSV from the portal.`,
+      steps: [
+        {
+          label: 'List all VMs first — the "left side" of the join',
+          body: `<p>Start by selecting every VM in scope. Resource Graph's <code>Resources</code> table holds them; type filter pulls just VMs.</p>
+<pre><code>Resources
+| where type == "microsoft.compute/virtualmachines"
+| project vmId = id, vmName = name, subscriptionId, resourceGroup,
+          osType = tostring(properties.storageProfile.osDisk.osType),
+          location</code></pre>
+<p>Test this alone first. Confirm you see the expected VM count for the subs you have access to.</p>`,
+        },
+        {
+          label: 'Build the "right side" — VMs that DO have MDE installed',
+          body: `<p>The MDE agent installs as a VM extension. Filter <code>Resources</code> to extensions named <code>MDE.Windows</code> or <code>MDE.Linux</code>. Note the <code>vmId</code> we extract — it's the parent VM's ARM ID, which is what we'll join against.</p>
+<pre><code>Resources
+| where type == "microsoft.compute/virtualmachines/extensions"
+| where name in ("MDE.Windows", "MDE.Linux")
+| extend vmId = tostring(properties.virtualMachine.id)
+| project vmId</code></pre>`,
+        },
+        {
+          label: 'leftanti-join — keep VMs that are NOT in the extension set',
+          body: `<p>Now subtract: <code>join kind=leftanti</code> returns rows from the left that have <i>no</i> match on the right. That's exactly "VMs missing the MDE extension." Add a snapshot timestamp so the CSV is auditor-defensible.</p>
+<pre><code>Resources
+| where type == "microsoft.compute/virtualmachines"
+| project vmId = id, vmName = name, subscriptionId, resourceGroup,
+          osType = tostring(properties.storageProfile.osDisk.osType),
+          location
+| join kind=leftanti (
+    Resources
+    | where type == "microsoft.compute/virtualmachines/extensions"
+    | where name in ("MDE.Windows", "MDE.Linux")
+    | extend vmId = tostring(properties.virtualMachine.id)
+    | project vmId
+  ) on vmId
+| extend snapshotTime = now()
+| order by subscriptionId asc, vmName asc</code></pre>`,
+        },
+      ],
       artifactKind: 'kql',
       starter: `Resources
 | where type == "microsoft.compute/virtualmachines"
@@ -628,6 +970,13 @@ Write-Output "Done. Actions: $($actions.Count)"`,
       `"The query is saved and can be pinned to a Defender for Cloud dashboard for ongoing tracking."`,
       `"For chains of audit questions, KQL beats clicking through the portal every time."`,
     ],
+    production: [
+      'Save the final query to <b>Resource Graph Explorer → Saved queries</b> and pin it to an Azure dashboard. Quarterly auditor re-runs take 5 seconds, not 5 minutes.',
+      'Up-front sanity check: confirm you have <b>Reader RBAC on every subscription</b> you intend to cover. ARG returns 0 results (not an error) when you can\'t see a sub — easy to miss, embarrassing in a meeting.',
+      'For 50k+ resource tenants, throttling kicks in fast. Use <code>| take 100</code> while iterating; remove only for the final run.',
+      'Cross-reference your KQL count against the <b>Defender for Cloud Inventory</b> blade. Numbers should match within ±5%. If they don\'t, one of the two views has a stale cache — usually Inventory.',
+      'Date-stamp every export. Auditors reject evidence that\'s "current state" with no snapshot timestamp. Add a leading <code>| extend snapshotTime = now()</code> and project it.',
+    ],
     explainBackKey: 'tkt7_kql',
   },
 
@@ -641,15 +990,22 @@ Write-Output "Done. Actions: $($actions.Count)"`,
     brief: {
       reporter: 'platform@corp',
       plain: `Someone edited the "Storage public blob deny" policy assignment
-              directly in the portal — they changed enforcementMode from
-              Default to DoNotEnforce. Audit caught it. The Terraform
-              module that owns this assignment is unchanged. Your job: detect
-              the drift, plan the re-apply, and put a fence up so this doesn\'t
-              happen again.`,
+              directly in the portal — they changed <code>enforcementMode</code>
+              from <code>Default</code> (block/audit per the policy's effect)
+              to <code>DoNotEnforce</code> (assignment exists but evaluates
+              nothing — usually reserved for incident pauses). Audit caught
+              it. The Terraform module that owns this assignment is unchanged.
+              Your job: detect the drift, plan the re-apply, and put a fence
+              up so this doesn\'t happen again.`,
       stakes: `Console edits to Terraform-owned resources turn IaC into a
                lie. If we let it slide once, the codebase becomes
                aspirational rather than authoritative.`,
     },
+    doneWhen: [
+      'Drift detected via <code>terraform plan -refresh-only</code> and root cause identified in the Activity Log (who, when, what changed).',
+      'Module re-applied — <code>enforcementMode</code> back to <code>Default</code>. State and reality agree again.',
+      'Prevention mechanism in place: either Azure Policy denying direct modifications to IaC-owned resources, or a pipeline gate. Process alone is not enough.',
+    ],
     investigate: {
       summary: 'Detect drift; trace the change; plan the fix.',
       steps: [
@@ -674,6 +1030,25 @@ Write-Output "Done. Actions: $($actions.Count)"`,
     build: {
       prompt: `Write the apply summary you'd post in your team's
                #compliance channel after re-applying.`,
+      steps: [
+        {
+          label: 'State the drift — what changed, from what to what',
+          body: `<p>Lead with the facts. Two values (before / after) and one timestamp. The audience scrolls — give them the truth in line one.</p>
+<pre><code>- **Drift detected:** enforcementMode changed from "Default" to "DoNotEnforce" via portal at 2026-05-08 14:03 UTC by user@corp (activity log).</code></pre>`,
+        },
+        {
+          label: 'Cause + fix — what happened and what you did',
+          body: `<p>Acknowledge the cause without naming individuals harshly. Then state the fix as a past-tense verifiable action.</p>
+<pre><code>- **Cause:** working around an unrelated deploy that was being blocked; intent was a 1-day workaround, never reverted.
+- **Fix:** re-applied terraform-policy-module v2.3.1. Assignment back to enforced Default. Verified compliance scan now triggering deny on policy-violating storage accounts.</code></pre>`,
+        },
+        {
+          label: 'Prevention — RBAC change + detective backstop',
+          body: `<p>Close with the structural fix so the next reader knows this won't recur. RBAC is the real fence; the Defender alert is the seatbelt.</p>
+<pre><code>- **Prevention:** RBAC at the policy assignment scope tightened — only the Terraform service principal has Resource Policy Contributor. Humans need a PR.
+- **Detective backstop:** Defender alert "Policy assignment modified" at the MG scope, routes to #platform-alerts.</code></pre>`,
+        },
+      ],
       artifactKind: 'note',
       starter: `## Drift fixed: storage-public-blob-deny\n\n- Drift: \n- Cause: \n- Fix: \n- Prevention: `,
       sample: `## Drift fixed: storage-public-blob-deny
@@ -698,6 +1073,13 @@ Write-Output "Done. Actions: $($actions.Count)"`,
       `"Added a Defender alert as a backstop in case RBAC gets relaxed later."`,
       `"Comments in Terraform don't stop people; permissions do."`,
     ],
+    production: [
+      'Run <code>terraform plan</code> in CI on every push, with alerting on diffs. <b>Drift detection should be a cron job</b>, not "noticed by audit two weeks later."',
+      'For Azure Policy, prefer <b>initiative assignment</b> (one Terraform resource) over per-policy assignments (N resources). Fewer state objects, faster plan, easier rollback.',
+      '<b>Lock the state file</b> during apply: <code>-lock-timeout=10m</code>. Concurrent applies destroy state. The backend (S3+DynamoDB or Azure Storage blob lease) should enforce this — verify it is.',
+      'If state corrupts: <b>backend-versioned restore</b> (S3 object version / Azure blob version) takes minutes. <code>terraform import</code> from scratch takes hours-to-days. Make sure backend versioning is on.',
+      'The "fence to prevent recurrence" is an Azure Policy that <b>denies direct modifications to IaC-owned resources</b> — allow only via Terraform\'s service principal. Process alone doesn\'t hold; the policy enforces.',
+    ],
     explainBackKey: 'tkt8_drift',
   },
 
@@ -721,6 +1103,11 @@ Write-Output "Done. Actions: $($actions.Count)"`,
                around the portal sets a worse tone than admitting a
                limitation.`,
     },
+    doneWhen: [
+      'For <b>Azure (MCSB NS-1)</b>: Defender Regulatory Compliance pane exported as PDF, plus the underlying KQL for the non-compliant resources. Date-stamped.',
+      'For <b>AWS (NIST 800-53 SC-7)</b>: evidence packaged via <b>AWS Audit Manager</b> (not raw Config console) and exported. Mapping spreadsheet shows which Config rules satisfy SC-7.',
+      'Folder structure laid out for the auditor: <code>/queries/</code>, <code>/snapshots/&lt;date&gt;/</code>, <code>/mappings.csv</code>, plus an index page with anchor links per control.',
+    ],
     investigate: {
       summary: 'For each cloud, walk: control → policy/rule → state → exceptions.',
       steps: [
@@ -746,6 +1133,49 @@ Write-Output "Done. Actions: $($actions.Count)"`,
       prompt: `Compile the evidence packet (markdown). One section per cloud,
                mapping control → policy/rule → state → exceptions →
                findings. Keep it scannable.`,
+      steps: [
+        {
+          label: 'Header — what control, what cycle, who owns it',
+          body: `<p>Auditors flip past long preambles. Two lines give them the metadata they need to file the evidence.</p>
+<pre><code># Audit evidence — control NS-1 / SC-7
+Date: 2026-05-09 · Owner: trung.truong@tylertech.com · Audit cycle: Q2</code></pre>`,
+        },
+        {
+          label: 'Azure side — control → mapped policies → state → exemptions',
+          body: `<p>For NS-1, list the <b>mapped policies</b> (from the Defender Regulatory Compliance pane), the <b>current pass/fail</b> number, and any <b>active exemptions</b> with their expiry + ticket. This is the "where did the number come from" trace.</p>
+<pre><code>## Azure (MCSB NS-1, "Network security")
+
+**Mapped policies (assigned at Tenant Root MG via MCSB initiative):**
+- Storage accounts should restrict network access
+- Public IPs should not be assigned to subnets
+- Network watcher should be enabled in all regions
+
+**Current state (Defender for Cloud → Regulatory Compliance → MCSB → NS-1):**
+- 92% pass · 8% fail (12 of 148 resources)
+
+**Active exemptions:**
+- 1 storage account, "vendor-share-data-eng-sa01", expiresOn 2026-06-08, category Mitigated. Ticket T-1234.</code></pre>`,
+        },
+        {
+          label: 'AWS side + open findings + remediation owners',
+          body: `<p>Mirror the structure on the AWS side, then close with a small table of open findings + remediation owners. The owners line is what the auditor follows up on next cycle.</p>
+<pre><code>## AWS (NIST 800-53 SC-7, "Boundary protection")
+
+**Mapped Config rules (via Audit Manager packaged framework):**
+- s3-bucket-public-access-prohibited
+- ec2-security-group-attached-to-eni
+- restricted-ssh
+
+**Current state (Config Aggregator org-wide):**
+- 96% pass · 4% fail (3 of 78 resources)
+
+**Open findings:**
+| Resource           | Rule                              | Owner            | Target date |
+|--------------------|-----------------------------------|------------------|-------------|
+| sg-abc / dev-vpc   | restricted-ssh                    | netsec@corp      | 2026-05-20  |
+| s3://data-temp     | s3-bucket-public-access-prohibited| data-eng@corp    | 2026-05-15  |</code></pre>`,
+        },
+      ],
       artifactKind: 'note',
       starter: `# Audit evidence — control NS-1 / SC-7\n\n## Azure (MCSB NS-1)\n- Mapped policies: \n- Current state: \n- Exceptions: \n- Open findings: \n\n## AWS (NIST 800-53 SC-7)\n- Mapped Config rules: \n- Current state: \n- Exceptions: \n- Open findings: `,
       sample: `# Audit evidence — control NS-1 / SC-7
@@ -804,6 +1234,13 @@ ticket T-1235 to confirm the business reason.`,
       `"Active exemptions are documented and time-bound; exceptions on AWS are zero."`,
       `"During prep we found one storage account without an exemption record — disclosed and remediated, retroactively documented."`,
       `"Auto-remediation runbook is the long-term fix for the recurring sandbox storage findings."`,
+    ],
+    production: [
+      'Export the Defender for Cloud <b>Regulatory Compliance</b> pane as <b>PDF + the underlying KQL</b>. Auditors want both — the "what" (compliance %) and the "how" (the query that produced it).',
+      'For AWS, map compliance evidence via <b>AWS Audit Manager</b> (packaged in a defensible format) rather than the raw Config console. Audit Manager already has frameworks for SOC 2, PCI, HIPAA, NIST.',
+      'Every artifact gets a <b>date stamp</b>. Auditors reject "current state" snapshots with no date — they can\'t verify it\'s the moment they asked about.',
+      'Maintain a <code>compliance-evidence/</code> repo with a <b>quarterly snapshot</b>. When the auditor asks "and what did this look like 9 months ago?", you point at the tag.',
+      'Make the auditor\'s read easy: an index page with anchor links to each control, raw queries in <code>/queries/</code>, PDFs in <code>/snapshots/&lt;date&gt;/</code>, mapping spreadsheet at the top. Saves hours of back-and-forth.',
     ],
     explainBackKey: 'tkt9_audit',
   },

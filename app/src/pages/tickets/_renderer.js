@@ -51,10 +51,21 @@ export function renderTicket(id) {
         <div class="ticket-plain"><span class="layer-label">What's going on</span>
           <p>${t.brief.plain}</p>
         </div>
+        ${t.brief.primer ? `
+          <div class="ticket-plain"><span class="layer-label">First, the vocabulary</span>
+            <p>${t.brief.primer}</p>
+          </div>` : ''}
         <div class="ticket-stakes"><span class="layer-label">What's at stake</span>
           <p>${t.brief.stakes}</p>
         </div>
       </div>
+
+      ${t.doneWhen ? `
+        <div class="card ticket-donewhen">
+          <div class="step-head">✅ Done when</div>
+          <p class="hint">Concrete acceptance criteria. Check each off before marking the ticket done.</p>
+          <ul class="donewhen-list">${t.doneWhen.map(d => `<li>${d}</li>`).join('')}</ul>
+        </div>` : ''}
 
       <!-- Investigate -->
       <div class="card ticket-step">
@@ -86,6 +97,23 @@ export function renderTicket(id) {
         <div class="step-head">4 · Build the artifact</div>
         <p>${t.build.prompt}</p>
         <p class="hint">Artifact kind: <strong>${escapeHtml(KIND_LABEL[t.build.artifactKind] || t.build.artifactKind)}</strong></p>
+
+        ${t.build.steps ? `
+          <div class="build-scaffold">
+            <p class="hint">Stuck? Reveal the build in 3 steps — write each step yourself before clicking the next.</p>
+            <ol class="build-steps">
+              ${t.build.steps.map((s, i) => `
+                <li class="build-step">
+                  <button class="build-step-toggle" data-step="${i}">
+                    <span class="build-step-num">Step ${i + 1}</span>
+                    <span class="build-step-label">${escapeHtml(s.label)}</span>
+                    <span class="build-step-chev">▸</span>
+                  </button>
+                  <div class="build-step-body hidden">${s.body}</div>
+                </li>`).join('')}
+            </ol>
+          </div>` : ''}
+
         <textarea class="ticket-build-area" data-key="build_${t.id}"
                   rows="14"
                   spellcheck="false">${escapeHtml(t.build.starter)}</textarea>
@@ -113,6 +141,13 @@ export function renderTicket(id) {
         <h2>🗣️ Meeting talking points</h2>
         <ol>${t.talkingPoints.map(p => `<li>${p}</li>`).join('')}</ol>
       </div>
+
+      ${t.production ? `
+        <div class="card ticket-production">
+          <h2>🛠️ Production reality check</h2>
+          <p class="hint">What experienced engineers add — beyond the textbook fix.</p>
+          <ul>${t.production.map(p => `<li>${p}</li>`).join('')}</ul>
+        </div>` : ''}
 
       <div class="card fnd-explain">
         <h2>✍️ Explain it back</h2>
@@ -174,6 +209,16 @@ export function mountTicket(root, id) {
   // Show sample
   root.querySelector('[data-action="show-sample"]')?.addEventListener('click', () => {
     root.querySelector('.ticket-sample')?.classList.toggle('hidden');
+  });
+
+  // Build scaffold — click-to-reveal per step
+  $$('.build-step-toggle', root).forEach(btn => {
+    btn.addEventListener('click', () => {
+      const body = btn.parentElement.querySelector('.build-step-body');
+      const open = !body.classList.contains('hidden');
+      body.classList.toggle('hidden');
+      btn.classList.toggle('open', !open);
+    });
   });
 
   // Copy sample

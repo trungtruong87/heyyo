@@ -23,9 +23,11 @@ A small static SPA under `app/`. Zero build step, native ES modules, no framewor
         search.js                  Cmd-K search index
       data/                        foundations · tickets · mapping · decisions · scp · kql
       pages/
-        foundations/{1..5}.js      14-day path, phase 1 (concept pairs)
+        foundations/day{1..5}.js   14-day path, phase 1 (concept pairs)
+        foundations/_renderer.js   shared day-page renderer
         tickets/{t1..t9}.js        14-day path, phase 2 (mock compliance work queue)
-        reference/{wiki,decisions,vault,quickref}.js
+        tickets/_renderer.js       shared ticket-page renderer
+        reference/{wiki,decisions,vault,quickref,cheatsheet}.js
         practice/{scp,kql,azpolicy}.js   "Lab Bench" — kept simulators (decent eval engines)
         study/home.js              dashboard landing
 ```
@@ -52,7 +54,7 @@ Every page in `src/pages/**` exports:
 export const meta = { title: '...', cloud: 'aws' | 'azure' | 'tf' | 'home' | 'both' };
 export function render() { return '<div class="page-inner">…</div>'; }
 export function mount(rootEl) { /* attach handlers */ }
-export function unmount() { /* optional cleanup */ }
+export function unmount() { /* optional cleanup — currently unused by all pages */ }
 ```
 
 Routes are registered in `src/main.js`'s `NAV` table. Add a new page = add a route entry there; the sidebar and mobile-nav render from the same table.
@@ -80,6 +82,8 @@ The tool is being rebuilt around the user's compliance-team role. The primary co
 - `src/data/decisions.js` — five decision trees (SCP vs IAM, Azure Policy effect choice, etc.).
 
 Lab-bench pages (`practice/scp`, `practice/kql`, `practice/azpolicy`) own their own data files (`data/scp.js`, `data/kql.js`) — keep them in sync if you change the templates.
+
+Day pages (`day1..day5`) and ticket pages (`t1..t9`) delegate to `src/pages/foundations/_renderer.js` and `src/pages/tickets/_renderer.js` respectively. Edit the shared renderer rather than duplicating layout changes across all 14 page files.
 
 ## Conventions worth keeping
 
