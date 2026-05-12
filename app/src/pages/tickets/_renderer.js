@@ -4,7 +4,7 @@
 
 import { html, $, $$, badge, escapeHtml, copyToClipboard } from '../../core/ui.js';
 import { TICKETS, ticketById } from '../../data/tickets.js';
-import { getTktDone, setTktDone, getExplain, setExplain, addSnippet } from '../../core/storage.js';
+import { getTktDone, setTktDone, addSnippet } from '../../core/storage.js';
 
 function cloudCls(c) {
   if (c === 'aws') return 'aws';
@@ -33,7 +33,6 @@ export function renderTicket(id) {
   const idx = order.indexOf(t.id);
   const prev = idx > 0 ? order[idx - 1] : null;
   const next = idx < order.length - 1 ? order[idx + 1] : null;
-  const explain = getExplain(t.explainBackKey);
 
   return html`
     <div class="page-inner ticket-page">
@@ -149,19 +148,6 @@ export function renderTicket(id) {
           <ul>${t.production.map(p => `<li>${p}</li>`).join('')}</ul>
         </div>` : ''}
 
-      <div class="card fnd-explain">
-        <h2>✍️ Explain it back</h2>
-        <p class="hint">One paragraph in your own words: what the ticket actually
-                        taught you. Stored locally; no grading.</p>
-        <textarea class="fnd-explain-area" data-key="${t.explainBackKey}"
-                  placeholder="${escapeHtml('In my own words…')}"
-                  rows="5">${escapeHtml(explain)}</textarea>
-        <div class="btn-row">
-          <button class="btn btn-green" data-action="save-explain">Save</button>
-          <span class="hint" data-saved-explain></span>
-        </div>
-      </div>
-
       <div class="fnd-footer">
         <div class="btn-row">
           ${prev ? `<a class="btn" href="#/tickets/${prev.toLowerCase()}">← ${prev}</a>` : '<span></span>'}
@@ -225,14 +211,6 @@ export function mountTicket(root, id) {
   root.querySelector('[data-action="copy-sample"]')?.addEventListener('click', (e) => {
     const code = root.querySelector('.ticket-sample-code')?.textContent || '';
     copyToClipboard(code, e.currentTarget);
-  });
-
-  // Save explain
-  root.querySelector('[data-action="save-explain"]')?.addEventListener('click', () => {
-    const ta = root.querySelector('.fnd-explain-area');
-    setExplain(t.explainBackKey, ta.value);
-    const note = root.querySelector('[data-saved-explain]');
-    if (note) { note.textContent = '✓ Saved'; setTimeout(() => note.textContent = '', 1500); }
   });
 
   // Toggle done

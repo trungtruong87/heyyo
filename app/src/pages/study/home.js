@@ -23,14 +23,14 @@ function nextTicket() {
 }
 
 const QUICK_LINKS = [
-  { route: '/foundations/1',       icon: '📚', name: 'Foundations',     type: 'Phase 1' },
-  { route: '/tickets/t1',          icon: '🎫', name: 'Ticket Queue',    type: 'Phase 2' },
-  { route: '/reference/wiki',      icon: '📖', name: 'Wiki',            type: 'Reference' },
-  { route: '/reference/decisions', icon: '🌳', name: 'Decision trees',  type: 'Reference' },
-  { route: '/reference/vault',     icon: '💼', name: 'Snippet Vault',   type: 'Your work' },
-  { route: '/practice/scp',        icon: '🏛️', name: 'SCP lab bench',   type: 'AWS' },
-  { route: '/practice/kql',        icon: '🔍', name: 'KQL lab bench',   type: 'Azure' },
-  { route: '/practice/azure-policy', icon: '📋', name: 'Azure Policy lab', type: 'Azure' },
+  { route: '/foundations/org-structure', icon: '📚', name: 'Foundations',     type: 'Start here' },
+  { route: '/tickets/t1',                icon: '🎫', name: 'Ticket Queue',    type: 'Phase 2' },
+  { route: '/reference/wiki',            icon: '📖', name: 'Wiki',            type: 'Reference' },
+  { route: '/reference/decisions',       icon: '🌳', name: 'Decision trees',  type: 'Reference' },
+  { route: '/reference/vault',           icon: '💼', name: 'Snippet Vault',   type: 'Your work' },
+  { route: '/practice/scp',              icon: '🏛️', name: 'SCP lab bench',   type: 'AWS' },
+  { route: '/practice/kql',              icon: '🔍', name: 'KQL lab bench',   type: 'Azure' },
+  { route: '/practice/azure-policy',     icon: '📋', name: 'Azure Policy lab', type: 'Azure' },
 ];
 
 export function render() {
@@ -44,9 +44,10 @@ export function render() {
     <div class="page-inner">
       <div class="ph">
         <h1>🛡️ DevOps Compliance Workbench</h1>
-        <p>A 14-day path to (a) follow compliance meetings without freezing on
-           terminology, and (b) make real progress on a first ticket.
-           Plain-English first, working detail second.</p>
+        <p>Topic-grouped Foundations + a 9-ticket queue. Built to (a) follow
+           compliance meetings without freezing on terminology, and (b) make
+           real progress on a first ticket. Plain-English first, working
+           detail second.</p>
       </div>
 
       <div class="dash-hero">
@@ -60,17 +61,17 @@ export function render() {
       <div class="grid-2">
         ${f ? `
           <div class="card today-card">
-            <div class="today-label">Phase 1 — next foundation</div>
-            <div class="today-day">${f.num}: ${f.title}</div>
+            <div class="today-label">Foundations — next topic${f.group ? ` · ${f.group}` : ''}</div>
+            <div class="today-day">${f.title}</div>
             <div class="today-focus">${f.subtitle}</div>
             <div class="btn-row">
-              <button class="btn btn-green" data-go="/foundations/${f.id}">Open Day ${f.id} →</button>
+              <button class="btn btn-green" data-go="/foundations/${f.id}">Open topic →</button>
             </div>
           </div>` : `
           <div class="card today-card">
-            <div class="today-label">Phase 1 — done ✓</div>
-            <div class="today-day">All 5 foundations completed.</div>
-            <div class="today-focus">Move to Phase 2 if you haven't already.</div>
+            <div class="today-label">Foundations — done ✓</div>
+            <div class="today-day">All ${FOUNDATIONS.length} topics completed.</div>
+            <div class="today-focus">Move to Tickets if you haven't already.</div>
           </div>`}
 
         ${t ? `

@@ -41,6 +41,16 @@
   color: var(--text3); text-transform: uppercase; letter-spacing: .09em;
   padding: 12px 10px 4px;
 }
+/* Sub-header inside a section (e.g. AWS Governance / Azure Governance under Foundations) */
+.sb-subgroup {
+  font-size: 10px; font-weight: 600;
+  color: var(--text3);
+  padding: 9px 10px 3px 10px;
+  margin-top: 4px;
+  border-top: 1px dashed color-mix(in srgb, var(--text3) 22%, transparent);
+  letter-spacing: .04em;
+}
+.sb-subgroup:first-child { border-top: none; margin-top: 0; padding-top: 4px; }
 
 /* sidebar nav button */
 .snb {
@@ -182,10 +192,26 @@
 .mn-sheet .snb { padding: 10px 12px; font-size: 14px; }
 
 /* ─── Responsive ─── */
-@media (max-width: 768px) {
+/* iPad Pro 11"/13" portrait (834 / 1024) and iPhone (393) all get the
+   topbar + bottom-nav. Sidebar reappears at landscape iPad and laptop sizes. */
+@media (max-width: 1024px) {
   .sidebar { display: none; }
   .topbar { display: flex; }
   .mobile-nav { display: flex; }
   .main { padding-bottom: var(--bottomnav-h); }
   .page-inner { padding: 1rem; }
+}
+
+/* Tighter padding on phones */
+@media (max-width: 480px) {
+  .page-inner { padding: 0.75rem; }
+  .ph h1 { font-size: 20px; }
+}
+
+/* On desktop, force-hide the mobile sheet even if .open lingered from a
+   previous narrow-viewport interaction (the .open class persists across
+   resizes; sheet would otherwise overlay the desktop content). */
+@media (min-width: 1025px) {
+  .mn-sheet,
+  .mn-sheet.open { display: none !important; }
 }

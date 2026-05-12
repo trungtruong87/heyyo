@@ -39,15 +39,17 @@ export async function initSearch(NAV) {
     const panelText = (f.panels || []).map(p =>
       `${p.service} ${p.plain} ${(p.detail || []).join(' ')}`).join(' ');
     const haystack = [
-      f.num, f.title, f.subtitle,
+      f.group, f.title, f.subtitle,
       f.intro?.plain, f.intro?.mnemonic,
       panelText,
+      f.conceptDive?.title, f.conceptDive?.body,
+      (f.fieldNotes || []).join(' '),
       (f.recap || []).join(' '),
       (f.talkingPoints || []).join(' '),
     ].filter(Boolean).join(' ');
     index.push({
-      title: `${f.num}: ${f.title}`,
-      sub:   `Foundation · ${f.subtitle}`,
+      title: f.title,
+      sub:   `Foundations · ${f.group || ''} · ${f.subtitle}`,
       route: `/foundations/${f.id}`,
       kind:  'foundation',
       terms: haystack.toLowerCase(),

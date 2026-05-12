@@ -17,14 +17,22 @@ import { initSearch, openSearch } from './core/search.js';
 // ─── Pages ──────────────────────────────────────────
 import * as homePage from './pages/study/home.js';
 
-// Foundations (Phase 1: Days 1–5)
-import * as fnd1 from './pages/foundations/day1.js';
-import * as fnd2 from './pages/foundations/day2.js';
-import * as fnd3 from './pages/foundations/day3.js';
-import * as fnd4 from './pages/foundations/day4.js';
-import * as fnd5 from './pages/foundations/day5.js';
+// Foundations — topic-grouped pages (see data/foundations.js)
+import * as fndOrg              from './pages/foundations/org-structure.js';
+import * as fndAwsScp           from './pages/foundations/aws-scp.js';
+import * as fndAwsConfig        from './pages/foundations/aws-config.js';
+import * as fndAwsCT            from './pages/foundations/aws-control-tower.js';
+import * as fndAzurePolicy      from './pages/foundations/azure-policy.js';
+import * as fndAzureAnatomy     from './pages/foundations/azure-policy-anatomy.js';
+import * as fndAzureMcsb        from './pages/foundations/azure-mcsb.js';
+import * as fndAzureRunbooks    from './pages/foundations/azure-runbooks.js';
+import * as fndKql              from './pages/foundations/kql.js';
+import * as fndResourceGraph    from './pages/foundations/resource-graph.js';
+import * as fndDefenderCloud    from './pages/foundations/defender-cloud.js';
+import * as fndDefenderEndpoint from './pages/foundations/defender-endpoint.js';
+import * as fndTerraform        from './pages/foundations/terraform.js';
 
-// Tickets (Phase 2: Days 6–14)
+// Tickets
 import * as t1 from './pages/tickets/t1.js';
 import * as t2 from './pages/tickets/t2.js';
 import * as t3 from './pages/tickets/t3.js';
@@ -49,6 +57,8 @@ import * as kqlSim      from './pages/practice/kql.js';
 import * as azpolicySim from './pages/practice/azpolicy.js';
 
 // ─── Navigation table (source of truth) ─────────────
+// Foundations items have a `group` field that drives the sub-header rendering
+// in both the sidebar and the mobile sheet.
 const NAV = [
   {
     section: 'Home', icon: '🏠', cloud: 'home',
@@ -59,11 +69,25 @@ const NAV = [
   {
     section: 'Foundations', icon: '📚', cloud: 'home',
     items: [
-      { route: '/foundations/1', label: 'Day 1 · Org structure',           icon: '🌳', mod: fnd1, cloud: 'home' },
-      { route: '/foundations/2', label: 'Day 2 · Guardrails',              icon: '🚧', mod: fnd2, cloud: 'home' },
-      { route: '/foundations/3', label: 'Day 3 · Detection',               icon: '🔍', mod: fnd3, cloud: 'home' },
-      { route: '/foundations/4', label: 'Day 4 · Landing Zone',            icon: '🛬', mod: fnd4, cloud: 'home' },
-      { route: '/foundations/5', label: 'Day 5 · Terraform',               icon: '🌍', mod: fnd5, cloud: 'tf'   },
+      // Orientation
+      { route: '/foundations/org-structure',       label: 'Org structure & checkpoints',   icon: '🌳', mod: fndOrg,              cloud: 'home',  group: 'Orientation' },
+      // AWS Governance
+      { route: '/foundations/aws-scp',             label: 'SCPs',                          icon: '🏛️', mod: fndAwsScp,           cloud: 'aws',   group: 'AWS Governance' },
+      { route: '/foundations/aws-config',          label: 'Config & Config Rules',         icon: '🔍', mod: fndAwsConfig,        cloud: 'aws',   group: 'AWS Governance' },
+      { route: '/foundations/aws-control-tower',   label: 'Control Tower & Landing Zones', icon: '🛬', mod: fndAwsCT,            cloud: 'aws',   group: 'AWS Governance' },
+      // Azure Governance
+      { route: '/foundations/azure-policy',          label: 'Azure Policy',                  icon: '📋', mod: fndAzurePolicy,      cloud: 'azure', group: 'Azure Governance' },
+      { route: '/foundations/azure-policy-anatomy',  label: 'Azure Policy: anatomy',         icon: '🧬', mod: fndAzureAnatomy,     cloud: 'azure', group: 'Azure Governance' },
+      { route: '/foundations/azure-mcsb',            label: 'MCSB',                          icon: '🎯', mod: fndAzureMcsb,        cloud: 'azure', group: 'Azure Governance' },
+      { route: '/foundations/azure-runbooks',        label: 'Automation Runbooks',           icon: '⚡', mod: fndAzureRunbooks,    cloud: 'azure', group: 'Azure Governance' },
+      // Inventory & Query
+      { route: '/foundations/kql',                   label: 'KQL',                           icon: '🔎', mod: fndKql,              cloud: 'azure', group: 'Inventory & Query' },
+      { route: '/foundations/resource-graph',        label: 'Azure Resource Graph',          icon: '📊', mod: fndResourceGraph,    cloud: 'azure', group: 'Inventory & Query' },
+      // Defender Stack
+      { route: '/foundations/defender-cloud',        label: 'Defender for Cloud',            icon: '🛡️', mod: fndDefenderCloud,    cloud: 'azure', group: 'Defender Stack' },
+      { route: '/foundations/defender-endpoint',     label: 'Defender for Endpoint',         icon: '💻', mod: fndDefenderEndpoint, cloud: 'azure', group: 'Defender Stack' },
+      // Terraform
+      { route: '/foundations/terraform',             label: 'Terraform basics',              icon: '🌍', mod: fndTerraform,        cloud: 'tf',    group: 'Terraform' },
     ],
   },
   {
@@ -108,18 +132,40 @@ NAV.forEach(section => {
   });
 });
 
+// Render one section's items, inserting a sub-group header when item.group changes.
+function renderItems(items) {
+  let lastGroup = null;
+  let out = '';
+  for (const item of items) {
+    if (item.group && item.group !== lastGroup) {
+      out += `<div class="sb-subgroup">${escape(item.group)}</div>`;
+      lastGroup = item.group;
+    }
+    out += `
+      <button class="snb" data-route="${item.route}" data-cloud="${item.cloud}">
+        <span class="ni">${item.icon}</span>
+        <span class="lbl">${escape(item.label)}</span>
+      </button>`;
+  }
+  return out;
+}
+
+// Minimal escape for attribute and text contexts.
+function escape(s) {
+  return String(s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
 // ─── Sidebar render ─────────────────────────────────
 function renderSidebar() {
   const nav = $('#sb-nav');
   if (!nav) return;
   nav.innerHTML = NAV.map(section => `
     <div class="sb-section">${section.icon} ${section.section}</div>
-    ${section.items.map(item => `
-      <button class="snb" data-route="${item.route}" data-cloud="${item.cloud}">
-        <span class="ni">${item.icon}</span>
-        <span class="lbl">${item.label}</span>
-      </button>
-    `).join('')}
+    ${renderItems(section.items)}
   `).join('<div class="sb-sep"></div>');
 
   nav.addEventListener('click', e => {
@@ -159,12 +205,7 @@ function openSheet(idx) {
   const sheet = $('#mn-sheet');
   const section = NAV[idx];
   if (!section || !sheet) return;
-  sheet.innerHTML = section.items.map(item => `
-    <button class="snb" data-route="${item.route}" data-cloud="${item.cloud}">
-      <span class="ni">${item.icon}</span>
-      <span class="lbl">${item.label}</span>
-    </button>
-  `).join('');
+  sheet.innerHTML = renderItems(section.items);
   sheet.classList.add('open');
   sheet.onclick = e => {
     const b = e.target.closest('.snb');

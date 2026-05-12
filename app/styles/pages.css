@@ -1060,11 +1060,17 @@
 }
 
 /* ── Concept-dive worked-example table ─────────────────────────────────── */
+.fnd-concept-body { overflow-x: auto; }
+.fnd-concept-body table { min-width: 0; }
 .fnd-cd-table {
   width: 100%;
   border-collapse: collapse;
   font-size: 13px;
   margin: 10px 0;
+}
+@media (max-width: 600px) {
+  .fnd-cd-table { font-size: 12px; }
+  .fnd-cd-table th, .fnd-cd-table td { padding: 4px 5px; }
 }
 .fnd-cd-table th, .fnd-cd-table td {
   text-align: left;

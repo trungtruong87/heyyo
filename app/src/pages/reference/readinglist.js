@@ -18,7 +18,7 @@ const ROWS = [
       { label: 'Setting up a secure multi-account AWS environment', href: 'https://docs.aws.amazon.com/prescriptive-guidance/latest/migration-aws-environment/welcome.html' },
     ],
     chips: [
-      { route: '/foundations/4', label: 'Day 4' },
+      { route: '/foundations/aws-control-tower', label: 'Control Tower' },
       { route: '/tickets/t3', label: 'T3' },
       { route: '/reference/decisions', label: 'Decision trees' },
       { route: '/reference/wiki', label: 'Wiki' },
@@ -37,7 +37,7 @@ const ROWS = [
       { label: 'About controls in AWS Control Tower', href: 'https://docs.aws.amazon.com/controltower/latest/controlreference/about-controls.html' },
     ],
     chips: [
-      { route: '/foundations/4', label: 'Day 4' },
+      { route: '/foundations/aws-control-tower', label: 'Control Tower' },
       { route: '/tickets/t3', label: 'T3' },
       { route: '/reference/decisions', label: 'Decision trees' },
     ],
@@ -54,7 +54,7 @@ const ROWS = [
       { label: 'Evaluating Resources with AWS Config Rules', href: 'https://docs.aws.amazon.com/config/latest/developerguide/evaluate-config.html' },
     ],
     chips: [
-      { route: '/foundations/3', label: 'Day 3' },
+      { route: '/foundations/aws-config', label: 'AWS Config' },
       { route: '/tickets/t2', label: 'T2' },
       { route: '/reference/decisions', label: 'Decision trees' },
     ],
@@ -72,7 +72,7 @@ const ROWS = [
       { label: 'Service control policies (SCPs)', href: 'https://docs.aws.amazon.com/organizations/latest/userguide/orgs_manage_policies_scps.html' },
     ],
     chips: [
-      { route: '/foundations/2', label: 'Day 2' },
+      { route: '/foundations/aws-scp', label: 'SCPs' },
       { route: '/tickets/t1', label: 'T1' },
       { route: '/practice/scp', label: 'SCP+IAM evaluator' },
       { route: '/reference/decisions', label: 'Decision trees' },
@@ -94,7 +94,8 @@ const ROWS = [
       { label: 'Anatomy of Azure Policy (YouTube)', href: 'https://www.youtube.com/results?search_query=anatomy+of+azure+policy' },
     ],
     chips: [
-      { route: '/foundations/2', label: 'Day 2' },
+      { route: '/foundations/azure-policy', label: 'Azure Policy' },
+      { route: '/foundations/azure-policy-anatomy', label: 'Anatomy' },
       { route: '/tickets/t4', label: 'T4' },
       { route: '/tickets/t5', label: 'T5' },
       { route: '/tickets/t8', label: 'T8' },
@@ -115,7 +116,7 @@ const ROWS = [
       { label: 'What is Microsoft Defender for Cloud?', href: 'https://learn.microsoft.com/en-us/azure/defender-for-cloud/defender-for-cloud-introduction' },
     ],
     chips: [
-      { route: '/foundations/3', label: 'Day 3' },
+      { route: '/foundations/defender-cloud', label: 'Defender for Cloud' },
       { route: '/tickets/t5', label: 'T5' },
       { route: '/tickets/t9', label: 'T9' },
     ],
@@ -133,7 +134,7 @@ const ROWS = [
       { label: 'Microsoft Defender for Endpoint', href: 'https://learn.microsoft.com/en-us/defender-endpoint/microsoft-defender-endpoint' },
     ],
     chips: [
-      { route: '/foundations/3', label: 'Day 3' },
+      { route: '/foundations/defender-endpoint', label: 'Defender for Endpoint' },
       { route: '/tickets/t5', label: 'T5' },
       { route: '/tickets/t7', label: 'T7' },
     ],
@@ -151,12 +152,12 @@ const ROWS = [
       { label: 'Overview of MCSB', href: 'https://learn.microsoft.com/en-us/security/benchmark/azure/overview' },
     ],
     chips: [
-      { route: '/foundations/3', label: 'Day 3' },
+      { route: '/foundations/azure-mcsb', label: 'MCSB' },
       { route: '/tickets/t5', label: 'T5' },
       { route: '/tickets/t9', label: 'T9' },
     ],
     own: `Decode an MCSB control ID on sight (NS-1, IM-3, ES-1 — see the
-          glossary in Day 3 field notes). Map a Defender for Cloud
+          MCSB topic\'s control-ID decoder). Map a Defender for Cloud
           recommendation back to its MCSB control + the auditor framework
           it satisfies (NIST 800-53 / ISO 27001 / PCI). Know that
           <b>MCSB compliance % ≠ Secure Score</b> — different math.`,
@@ -169,6 +170,7 @@ const ROWS = [
       { label: 'Azure PowerShell documentation', href: 'https://learn.microsoft.com/en-us/powershell/azure/' },
     ],
     chips: [
+      { route: '/foundations/azure-runbooks', label: 'Runbooks' },
       { route: '/tickets/t6', label: 'T6' },
     ],
     own: `Read a PowerShell runbook and identify in one pass: identity
@@ -186,7 +188,8 @@ const ROWS = [
       { label: 'Azure Resource Graph query language', href: 'https://learn.microsoft.com/en-us/azure/governance/resource-graph/concepts/query-language' },
     ],
     chips: [
-      { route: '/foundations/3', label: 'Day 3' },
+      { route: '/foundations/kql', label: 'KQL' },
+      { route: '/foundations/resource-graph', label: 'Resource Graph' },
       { route: '/tickets/t7', label: 'T7' },
       { route: '/practice/kql', label: 'KQL playground' },
     ],

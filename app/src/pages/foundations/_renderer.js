@@ -1,10 +1,9 @@
-// Shared renderer for Foundation Days. Each /foundations/N route mounts a
-// thin module that calls into here with its day id.
+// Shared renderer for Foundation topic pages. Each /foundations/<slug> route
+// mounts a thin module that calls into here with its topic id.
 
 import { html, $, badge, escapeHtml, copyToClipboard } from '../../core/ui.js';
 import { FOUNDATIONS, foundationById } from '../../data/foundations.js';
 import { getFndDone, setFndDone, getExplain, setExplain } from '../../core/storage.js';
-import { navigate } from '../../core/router.js';
 
 function cloudClass(cloud) {
   return cloud === 'aws' ? 'aws' :
@@ -44,7 +43,6 @@ function handsOnStepHtml(step, f) {
 
 function renderHandsOnCard(f) {
   const ho = f.handsOn || {};
-  const legacyNote = getExplain('handson_' + f.id);
   return `
     <div class="card fnd-handson">
       <h2>🔧 Hands-on</h2>
@@ -53,11 +51,6 @@ function renderHandsOnCard(f) {
         <div class="btn-row handson-labs">
           ${ho.labLinks.map(labLinkHtml).join('')}
         </div>` : ''}
-      ${legacyNote ? `
-        <details class="handson-previous">
-          <summary>📝 Notes you wrote earlier (old format) — click to view</summary>
-          <pre>${escapeHtml(legacyNote)}</pre>
-        </details>` : ''}
       <div class="handson-steps">
         ${(ho.steps || []).map(s => handsOnStepHtml(s, f)).join('')}
       </div>
@@ -112,20 +105,28 @@ function labLinkHtml(l) {
             href="#${l.route}">${escapeHtml(l.label)} →</a>`;
 }
 
+// Find the prev/next topic by array position. Returns the topic object or null.
+function neighbor(f, delta) {
+  const idx = FOUNDATIONS.findIndex(x => x.id === f.id);
+  if (idx < 0) return null;
+  const j = idx + delta;
+  if (j < 0 || j >= FOUNDATIONS.length) return null;
+  return FOUNDATIONS[j];
+}
+
 export function renderFoundation(id) {
   const f = foundationById(id);
-  if (!f) return `<div class="page-inner"><div class="card"><h1>Day not found</h1></div></div>`;
+  if (!f) return `<div class="page-inner"><div class="card"><h1>Topic not found</h1></div></div>`;
 
   const done = getFndDone().has(f.id);
-  const prevId = f.id > 1 ? f.id - 1 : null;
-  const nextId = f.id < FOUNDATIONS.length ? f.id + 1 : null;
-  const explain = getExplain(f.explainBackKey);
+  const prev = neighbor(f, -1);
+  const next = neighbor(f, +1);
 
   return html`
     <div class="page-inner foundation-page">
       <div class="ph">
-        <div class="phase-pill">Phase 1 · Foundations</div>
-        <h1>${f.num}: ${escapeHtml(f.title)}</h1>
+        <div class="phase-pill">${escapeHtml(f.group || 'Foundations')}</div>
+        <h1>${escapeHtml(f.title)}</h1>
         <p>${escapeHtml(f.subtitle)}</p>
       </div>
 
@@ -171,28 +172,17 @@ export function renderFoundation(id) {
         <ol>${f.talkingPoints.map(t => `<li>${t}</li>`).join('')}</ol>
       </div>
 
-      <div class="card fnd-explain">
-        <h2>✍️ Explain it back</h2>
-        <p class="hint">Type one short paragraph in your own words. The act of writing
-                        it is the memory mechanism. Stored locally; no grading.</p>
-        <textarea class="fnd-explain-area" data-key="${f.explainBackKey}"
-                  placeholder="${escapeHtml('In my own words…')}"
-                  rows="5">${escapeHtml(explain)}</textarea>
-        <div class="btn-row">
-          <button class="btn btn-green" data-action="save-explain">Save</button>
-          <span class="hint" data-saved-explain></span>
-        </div>
-      </div>
-
       <div class="fnd-footer">
         <div class="btn-row">
-          ${prevId ? `<a class="btn" href="#/foundations/${prevId}">← Day ${prevId}</a>` : '<span></span>'}
+          ${prev
+            ? `<a class="btn" href="#/foundations/${prev.id}">← ${escapeHtml(prev.title)}</a>`
+            : '<span></span>'}
           <button class="btn ${done ? 'btn-tf' : 'btn-green'}" data-action="toggle-done">
-            ${done ? '✓ Marked done' : 'Mark this day done'}
+            ${done ? '✓ Marked done' : 'Mark this topic done'}
           </button>
-          ${nextId
-            ? `<a class="btn btn-aws" href="#/foundations/${nextId}">Day ${nextId} →</a>`
-            : `<a class="btn btn-azure" href="#/tickets/t1">Phase 2: Ticket Queue →</a>`}
+          ${next
+            ? `<a class="btn btn-${cloudClass(next.cloud)}" href="#/foundations/${next.id}">${escapeHtml(next.title)} →</a>`
+            : `<a class="btn btn-azure" href="#/tickets/t1">Ticket Queue →</a>`}
         </div>
       </div>
     </div>`;
@@ -201,14 +191,6 @@ export function renderFoundation(id) {
 export function mountFoundation(root, id) {
   const f = foundationById(id);
   if (!f) return;
-
-  // Save explain
-  root.querySelector('[data-action="save-explain"]')?.addEventListener('click', () => {
-    const ta = root.querySelector('.fnd-explain-area');
-    setExplain(f.explainBackKey, ta.value);
-    const note = root.querySelector('[data-saved-explain]');
-    if (note) { note.textContent = '✓ Saved'; setTimeout(() => note.textContent = '', 1500); }
-  });
 
   // Toggle done
   root.querySelector('[data-action="toggle-done"]')?.addEventListener('click', () => {

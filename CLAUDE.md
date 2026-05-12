@@ -23,16 +23,16 @@ A small static SPA under `app/`. Zero build step, native ES modules, no framewor
         search.js                  Cmd-K search index
       data/                        foundations · tickets · mapping · decisions · scp · kql
       pages/
-        foundations/day{1..5}.js   14-day path, phase 1 (concept pairs)
-        foundations/_renderer.js   shared day-page renderer
-        tickets/{t1..t9}.js        14-day path, phase 2 (mock compliance work queue)
+        foundations/<topic>.js     13 topic pages (org-structure, aws-scp, azure-policy, …)
+        foundations/_renderer.js   shared topic-page renderer
+        tickets/{t1..t9}.js        nine mock compliance tickets
         tickets/_renderer.js       shared ticket-page renderer
-        reference/{wiki,decisions,vault,quickref,cheatsheet}.js
+        reference/{wiki,decisions,vault,quickref,cheatsheet,readinglist}.js
         practice/{scp,kql,azpolicy}.js   "Lab Bench" — kept simulators (decent eval engines)
         study/home.js              dashboard landing
 ```
 
-The tool's purpose is the user's own DevOps-Security study hub for an upcoming compliance role. The active design — Foundations + Ticket Queue + Reference layer — is captured in `/Users/trungtruong/.claude/plans/i-am-going-to-polymorphic-hopper.md`. Read that plan before making structural changes.
+The tool's purpose is the user's own DevOps-Security study hub for an upcoming compliance role. The active design — topic-grouped Foundations + Ticket Queue + Reference layer — is captured in `/Users/trungtruong/.claude/plans/are-you-sure-all-scalable-nova.md`. Read that plan before making structural changes.
 
 ## Running it
 
@@ -72,18 +72,26 @@ Routes are registered in `src/main.js`'s `NAV` table. Add a new page = add a rou
 - Sidebar active state: `.snb.active-{home|aws|azure|tf|both}`.
 - New page-level styles go in `styles/pages.css`. Simulator styles in `styles/simulators.css`.
 
-## What lives where (for the current rewrite)
+## What lives where
 
-The tool is being rebuilt around the user's compliance-team role. The primary content lives in:
+The tool is built around the user's compliance-team role. The primary content lives in:
 
-- `src/data/foundations.js` — five concept pairs (Days 1–5). Each has plain-English + working-engineer layers, AWS↔Azure side-by-side panels, recap, meeting talking points.
-- `src/data/tickets.js` — nine mock compliance tickets (Days 6–14). Each has Brief → Investigate → Decide → Build artifact → Recap + Talking points.
+- `src/data/foundations.js` — 13 topic entries grouped under 5 sub-headings: **Orientation** (org-structure), **AWS Governance** (aws-scp, aws-config, aws-control-tower), **Azure Governance** (azure-policy, azure-policy-anatomy, azure-mcsb, azure-runbooks), **Inventory & Query** (kql, resource-graph), **Defender Stack** (defender-cloud, defender-endpoint), **Terraform** (terraform). Each has plain-English + working-engineer layers, optional 2-cloud panels, recap, meeting talking points. The renderer at `pages/foundations/_renderer.js` is shape-agnostic — add a topic = add an array entry + a 5-line shim in `pages/foundations/<id>.js` + a row in `main.js`'s NAV.
+- `src/data/tickets.js` — nine mock compliance tickets (T1–T9). Each has Brief → Investigate → Decide → Build artifact → Recap + Talking points.
 - `src/data/mapping.js` — structured AWS↔Azure concept rows, queryable.
 - `src/data/decisions.js` — five decision trees (SCP vs IAM, Azure Policy effect choice, etc.).
 
 Lab-bench pages (`practice/scp`, `practice/kql`, `practice/azpolicy`) own their own data files (`data/scp.js`, `data/kql.js`) — keep them in sync if you change the templates.
 
-Day pages (`day1..day5`) and ticket pages (`t1..t9`) delegate to `src/pages/foundations/_renderer.js` and `src/pages/tickets/_renderer.js` respectively. Edit the shared renderer rather than duplicating layout changes across all 14 page files.
+Topic pages (one per foundation entry) and ticket pages (`t1..t9`) delegate to `src/pages/foundations/_renderer.js` and `src/pages/tickets/_renderer.js` respectively. Edit the shared renderer rather than duplicating layout changes across page files.
+
+### Foundations item shape
+
+Each entry in `FOUNDATIONS` is `{ id, group, order, title, subtitle, cloud, intro: {plain, mnemonic}, panels: [{cloud, service, plain, detail[], example?}], diagram?, conceptDive?: {title, body}, fieldNotes[], handsOn: {intro, steps[], selfCheck[], labLinks?}, recap[], talkingPoints[] }`. `id` is a string slug used as the route path (`/foundations/<id>`) and as the file name. `group` drives the sidebar sub-header. No `explainBackKey` — the Explain it back textarea was removed.
+
+### Sidebar sub-groups
+
+`main.js`'s NAV table is the single source of truth. Foundation items carry a `group` field; `renderItems()` in main.js emits a `.sb-subgroup` row whenever the group changes. The mobile sheet uses the same renderer. To add a new sidebar sub-group inside Foundations, set `group: "<new group>"` on the relevant items.
 
 ## Conventions worth keeping
 
@@ -96,4 +104,11 @@ Day pages (`day1..day5`) and ticket pages (`t1..t9`) delegate to `src/pages/foun
 
 - `.github/workflows/pages.yml` — GitHub Pages deploy.
 - `.claude/settings.local.json` — local Claude permission allowlist; not application code.
-- `/Users/trungtruong/.claude/plans/i-am-going-to-polymorphic-hopper.md` — the active rewrite plan, source of truth for current intent.
+- `/Users/trungtruong/.claude/plans/are-you-sure-all-scalable-nova.md` — the active rewrite plan (regroup Foundations by topic, close coverage gaps, mobile verification). Source of truth for current intent.
+
+## Responsive breakpoints
+
+- `max-width: 1024px` → sidebar hides, topbar + bottom-nav appear. Covers iPhone 15 Pro (393), iPad Pro 11" portrait (834), and iPad Pro 13" portrait (1024). Laptop / iPad landscape still get the sidebar.
+- `max-width: 900px` → 2-column panel grids (`.fnd-panels.grid-2`, generic `.grid-2`) collapse to 1 column.
+- `max-width: 600px` → concept-dive worked-example table tightens its padding.
+- `max-width: 480px` → page-inner padding drops to .75rem; h1 to 20px.
