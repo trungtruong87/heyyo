@@ -1,7 +1,7 @@
 // Shared renderer for Foundation topic pages. Each /foundations/<slug> route
 // mounts a thin module that calls into here with its topic id.
 
-import { html, $, badge, escapeHtml, copyToClipboard } from '../../core/ui.js';
+import { html, $, badge, escapeHtml } from '../../core/ui.js';
 import { FOUNDATIONS, foundationById } from '../../data/foundations.js';
 import { getFndDone, setFndDone, getExplain, setExplain, getVoicePref, setVoicePref } from '../../core/storage.js';
 import { extractListenable, getVoices, pickDefaultVoice, play, cancelAll } from '../../core/voice.js';
@@ -14,11 +14,9 @@ function cloudClass(cloud) {
 
 function handsOnStepHtml(step, f) {
   const cc = cloudClass(f.cloud);
-  const stored = getExplain('handson_' + f.id + '_' + step.label);
-  const value = stored || step.starter || '';
   const labelEsc = escapeHtml(step.label);
   return `
-    <section class="handson-step handson-step-${cc}">
+    <section class="handson-step handson-step-${cc}" data-listen-card="handson-${labelEsc}">
       <div class="handson-step-head">
         <strong class="handson-step-label">${labelEsc}</strong>
         <span class="handson-question">${step.question}</span>
@@ -27,13 +25,8 @@ function handsOnStepHtml(step, f) {
         <button class="btn handson-hint-toggle" data-action="toggle-hint">💡 Hint</button>
         <div class="handson-hint hidden">${step.hint}</div>
       ` : ''}
-      <textarea class="handson-step-area" data-step-key="handson_${f.id}_${labelEsc}"
-                placeholder="${escapeHtml('Your answer…')}"
-                rows="5">${escapeHtml(value)}</textarea>
       <div class="btn-row handson-tools">
         <button class="btn btn-${cc}" data-action="show-answer">Show model answer</button>
-        <button class="btn" data-action="copy-answer">Copy answer</button>
-        <span class="hint" data-saved-step></span>
       </div>
       <div class="handson-answer hidden">
         <span class="layer-label">Model answer</span>
@@ -95,7 +88,24 @@ function panelHtml(p) {
         <div class="fnd-example">
           <span class="layer-label">Example</span>
           <pre><code>${escapeHtml(p.example)}</code></pre>
+          ${exampleAnnotationsHtml(p.exampleAnnotations)}
         </div>` : ''}
+    </div>`;
+}
+
+function exampleAnnotationsHtml(anns) {
+  if (!Array.isArray(anns) || !anns.length) return '';
+  return `
+    <div class="fnd-example-annotations">
+      <span class="layer-label">What's what</span>
+      <ul>
+        ${anns.map(a => `
+          <li class="ann-${a.type === 'keyword' ? 'keyword' : 'user'}">
+            <code>${escapeHtml(a.token)}</code>
+            <span class="ann-tag">${a.type === 'keyword' ? 'platform keyword' : 'your value'}</span>
+            <span class="ann-note">${escapeHtml(a.note)}</span>
+          </li>`).join('')}
+      </ul>
     </div>`;
 }
 
@@ -137,7 +147,7 @@ export function renderFoundation(id) {
           <button class="btn" data-action="listen-pause" hidden>⏸ Pause</button>
           <button class="btn" data-action="listen-resume" hidden>▶ Resume</button>
           <button class="btn" data-action="listen-stop" hidden>■ Stop</button>
-          <span class="fnd-listen-status" data-listen-status>Reads the plain-English layers aloud — code &amp; tables skipped.</span>
+          <span class="fnd-listen-status" data-listen-status>Reads plain-English layers, recap, talking points, and hands-on Q&amp;A aloud — code &amp; tables skipped.</span>
         </div>
         <details class="fnd-listen-details">
           <summary>Voice settings</summary>
@@ -246,25 +256,7 @@ export function mountFoundation(root, id) {
           ans.classList.toggle('hidden');
           btn.textContent = ans.classList.contains('hidden') ? 'Show model answer' : 'Hide model answer';
         }
-      } else if (action === 'copy-answer' && step) {
-        const body = step.querySelector('.handson-answer-body');
-        if (body) copyToClipboard(body.textContent.trim(), btn);
       }
-    });
-
-    // Auto-save per-step textareas (debounced)
-    const saveTimers = {};
-    handsonRoot.addEventListener('input', (e) => {
-      const ta = e.target.closest('.handson-step-area');
-      if (!ta) return;
-      const key = ta.dataset.stepKey;
-      if (!key) return;
-      clearTimeout(saveTimers[key]);
-      saveTimers[key] = setTimeout(() => {
-        setExplain(key, ta.value);
-        const note = ta.closest('.handson-step')?.querySelector('[data-saved-step]');
-        if (note) { note.textContent = '✓ Saved'; setTimeout(() => { note.textContent = ''; }, 1500); }
-      }, 400);
     });
 
     // Persist self-check checkboxes
@@ -356,6 +348,12 @@ function mountListenBar(root, f) {
       return;
     }
     if (activeController) activeController.stop();
+    // Auto-expand every hands-on answer panel so the reader can follow
+    // along while Listen narrates the Q & A.
+    root.querySelectorAll('.handson-answer.hidden').forEach(el => el.classList.remove('hidden'));
+    root.querySelectorAll('[data-action="show-answer"]').forEach(btn => {
+      btn.textContent = 'Hide model answer';
+    });
     activeController = play(queue, {
       voice: currentVoice,
       rate: Number(rateInput.value) || 1.0,

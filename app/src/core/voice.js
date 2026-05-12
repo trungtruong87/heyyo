@@ -3,58 +3,66 @@
 // Why this module exists:
 //   The user studies dense compliance prose while commuting / doing chores.
 //   speechSynthesis is built into every browser, free, and uses OS-installed
-//   voices (offline once the voice is cached). On macOS, Daniel (en-GB) and
-//   Tom (en-US) are male and pleasant. We don't ship audio files.
+//   voices (offline once the voice is cached). User listens in Chrome on
+//   macOS — that environment exposes the macOS system voices plus Google's,
+//   all of which pronounce common cloud acronyms (AWS/SCP/IAM/OU) naturally
+//   without help. We don't ship audio files.
 //
-// Two failure modes we have to engineer around:
-//   1. Word-by-word robotic delivery. Cause: callers passing micro-strings.
-//      Fix: we pass whole paragraphs (or whole sentences for long ones) so
-//      the synthesizer has full prosodic context — intonation, pauses,
-//      sentence rhythm — exactly like a human reader.
-//   2. Acronym mispronunciation ("AWS" → /ɔːz/, "IAM" → "I am").
-//      Fix: pre-process text to insert periods between letters (A.W.S.),
-//      which forces almost every TTS engine into letter-by-letter spelling.
+// Two failure modes we engineer around:
+//   1. Word-by-word robotic delivery. Cause: callers passing micro-strings,
+//      OR over-aggressive acronym preprocessing forcing letter-spelling.
+//      Fix: pass whole paragraphs so the synth has full prosodic context;
+//      keep acronym preprocessing minimal (phonetic respelling only for
+//      true words like JSON/YAML/CIDR that get mangled otherwise).
+//   2. Em-dashes, "e.g.", "vs", and slash-separators cause stilted pacing
+//      because Web Speech ignores or mispaces them. Fix: light prosodic
+//      pre-pass that swaps them for punctuation the synth respects.
 
-// ─── Acronym normalization ─────────────────────────────────────────────
-// Order matters: longest first, plural variants before singular.
-// We use periods between letters because every common TTS engine treats
-// "A.W.S." as a spelled-out abbreviation, whereas "AWS" gets phonetized.
+// ─── Phonetic respelling (small list, only true mispronunciations) ─────
+// We DO NOT letter-space common acronyms (AWS, SCP, IAM, OU, MFA, KMS,
+// VPC, etc.) — modern Chrome voices say them correctly on their own, and
+// forcing "A.W.S." makes the engine spell letter-by-letter which kills
+// sentence rhythm.
 
 const ACRONYM_PATTERNS = [
-  // Plural variants first so "SCPs" doesn't get half-rewritten to "SCS"
-  [/\bSCPs\b/g, 'S.C.P.s'],
-  [/\bOUs\b/g,  'O.U.s'],
-  [/\bMGs\b/g,  'M.G.s'],
-  [/\bVMs\b/g,  'V.M.s'],
-  [/\bAPIs\b/g, 'A.P.I.s'],
-
-  [/\bAWS\b/g,  'A.W.S.'],
-  [/\bSCP\b/g,  'S.C.P.'],
-  [/\bIAM\b/g,  'I.A.M.'],
-  [/\bOU\b/g,   'O.U.'],
-  [/\bMG\b/g,   'M.G.'],
-  [/\bKQL\b/g,  'K.Q.L.'],
-  [/\bARG\b/g,  'A.R.G.'],
-  [/\bMCSB\b/g, 'M.C.S.B.'],
-  [/\bRBAC\b/g, 'R.B.A.C.'],
-  [/\bMFA\b/g,  'M.F.A.'],
-  [/\bKMS\b/g,  'K.M.S.'],
-  [/\bVPC\b/g,  'V.P.C.'],
-  [/\bSSO\b/g,  'S.S.O.'],
-  [/\bCLI\b/g,  'C.L.I.'],
-  [/\bSDK\b/g,  'S.D.K.'],
-  [/\bJSON\b/g, 'jay-son'],
-  [/\bYAML\b/g, 'yamel'],
-  [/\bS3\b/g,   'S.3.'],
-  [/\bEC2\b/g,  'E.C.2.'],
-  [/\bp4d\b/g,  'P 4 D'],
-  // Generic 2-3-letter ALL-CAPS short tokens — only inside parentheses to
-  // avoid clobbering things like "OK" in regular prose.
+  [/\bJSON\b/g,  'jay-son'],
+  [/\bYAML\b/g,  'yamel'],
+  [/\bCIDR\b/g,  'sider'],
+  [/\bIaC\b/g,   'I a C'],
 ];
 
 function expandAcronyms(s) {
   for (const [re, rep] of ACRONYM_PATTERNS) s = s.replace(re, rep);
   return s;
+}
+
+// ─── Prosodic hints — make pacing podcast-grade ────────────────────────
+// Targeted substitutions that swap punctuation Web Speech ignores for
+// punctuation it respects. Each transform exists because, without it,
+// the synth either rushes through a beat or stalls mid-clause.
+
+function addProsodicHints(s) {
+  return s
+    // Em-dash / en-dash with spaces → ellipsis. Web Speech treats em-dash
+    // as a non-pause; ellipsis gives a real beat. Keep the spacing.
+    .replace(/ [—–] /g, ', … ')
+    // Hyphen between words (space-hyphen-space) → comma. Preserves
+    // hyphenated words like "us-east-1" and "built-in" because those
+    // have no surrounding spaces.
+    .replace(/ - /g, ', ')
+    // Common Latin abbreviations — engines often skip the period and
+    // smush them into the next word.
+    .replace(/\be\.g\./gi, 'for example,')
+    .replace(/\bi\.e\./gi, 'that is,')
+    .replace(/\betc\./gi, 'and so on')
+    // "vs" / "vs." → "versus" — both spellings, optional period.
+    .replace(/\bvs\.?\b/gi, 'versus')
+    // Symbols read aloud — % gets silently dropped by some voices.
+    .replace(/(\d)\s*%/g, '$1 percent')
+    .replace(/ & /g, ' and ')
+    // "/" between full words (not in URLs or short ids like us-east-1)
+    // → " or ". Only when both sides are 3+ letter words.
+    .replace(/([a-z]{3,})\/([a-z]{3,})/gi, '$1 or $2');
 }
 
 // ─── HTML → speakable text ─────────────────────────────────────────────
@@ -88,11 +96,11 @@ function htmlToChunks(html) {
 }
 
 function cleanText(s) {
-  return expandAcronyms(
+  return addProsodicHints(expandAcronyms(
     s.replace(/\s+/g, ' ')
      .replace(/ /g, ' ')
      .trim()
-  );
+  ));
 }
 
 // Some voices stall on utterances over ~500 chars. Split on sentence
@@ -169,6 +177,27 @@ export function extractListenable(f) {
         text: `Point ${i + 1}. ${cleanText(stripTags(line))}`,
         cardKey: 'talking',
       });
+    });
+  }
+
+  // 5. Hands-on Q & A. Each step gets its own cardKey so the renderer
+  // can highlight (and auto-expand the answer panel for) the active step.
+  if (f.handsOn?.steps?.length) {
+    queue.push({ label: 'Hands-on', text: 'Hands on. Try answering these out loud.', cardKey: 'handson' });
+    f.handsOn.steps.forEach(step => {
+      const cardKey = `handson-${step.label}`;
+      const qText = cleanText(stripTags(step.question));
+      for (const part of splitLongChunk(qText)) {
+        queue.push({ label: 'Hands-on', text: `Question ${step.label}. ${part}`, cardKey });
+      }
+      if (step.answer) {
+        const aText = cleanText(stripTags(step.answer));
+        let first = true;
+        for (const part of splitLongChunk(aText)) {
+          queue.push({ label: 'Hands-on', text: first ? `Answer. ${part}` : part, cardKey });
+          first = false;
+        }
+      }
     });
   }
 

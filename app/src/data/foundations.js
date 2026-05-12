@@ -178,11 +178,11 @@ Tenant Root
       '"<b>Blast radius</b>" is the word managers and auditors use for "which leaves does this checkpoint cover." Learn it; use it when proposing where to attach a guardrail.',
     ],
     handsOn: {
-      intro: 'Three short exercises to lock in the tree mental model. Answer in the textareas; reveal the model answer when ready.',
+      intro: 'Three short exercises to lock in the tree mental model. Think through each one, then reveal the model answer.',
       steps: [
         {
           label: 'Q1',
-          question: `Here is the org tree we are working with (same one from the AWS panel above — repeated so you don't scroll):
+          question: `Given this org tree:
 <pre><code>Root
 ├── Security OU       (audit + log archive accounts)
 ├── Sandbox OU        (free play; SCP forbids egress)
@@ -194,7 +194,6 @@ You attach a "deny public storage" rule at the <strong>Workloads</strong> OU. Wh
           answer: `<p><strong>Covers</strong> — everything <em>under</em> Workloads: the NonProd OU, the Prod OU, and every account inside either of them.</p>
 <p><strong>Misses</strong> — Sandbox OU (sibling of Workloads), Security OU (sibling), the management/root account itself, and any future OU added outside the Workloads sub-tree.</p>
 <p>Lesson: attach high if you want broad coverage; attach low if you want narrow scope. "Blast radius" = which leaves the rule covers.</p>`,
-          starter: 'It covers:\n  - \n\nIt misses:\n  - ',
         },
         {
           label: 'Q2',
@@ -206,7 +205,6 @@ You attach a "deny public storage" rule at the <strong>Workloads</strong> OU. Wh
 <li>(d) SCP attach point (root / OU / account) → <strong>Azure Policy assignment scope</strong> (Tenant Root / MG / subscription).</li>
 </ul>
 <p>Shape is identical: a tree with rules attached at nodes that inherit down. Only the names differ.</p>`,
-          starter: '(a) AWS Org root → \n(b) OU → \n(c) Member account → \n(d) SCP attach point → ',
         },
         {
           label: 'Q3',
@@ -229,7 +227,6 @@ A user in <code>prod-001</code> tries to <code>iam:CreateUser</code> in <code>us
 <li>It only takes <strong>one</strong> "no" anywhere on the path to deny. The Root and Workloads OU checkpoints saying "yes" don't help.</li>
 <li>If the same user tried <code>iam:CreateUser</code> from a <em>NonProd</em> account, the Prod OU checkpoint isn't on the path, so the call would succeed (Root and Workloads OU don't deny it). Same action, different blast radius — different outcome.</li>
 </ul>`,
-          starter: 'Checkpoint 1 (Root):\nCheckpoint 2 (Workloads OU):\nCheckpoint 3 (Prod OU):\n\nWhat happens overall:',
         },
       ],
       selfCheck: [
@@ -308,6 +305,15 @@ A user in <code>prod-001</code> tries to <code>iam:CreateUser</code> in <code>us
     }
   }]
 }`,
+        exampleAnnotations: [
+          { token: '"Version": "2012-10-17"', type: 'keyword', note: 'AWS policy-language version. There is only one valid value — this exact date string. Docs: IAM JSON policy reference → "Version".' },
+          { token: '"Effect": "Deny"', type: 'keyword', note: 'AWS keyword. Only two valid values: "Allow" or "Deny". For SCPs, "Deny" is the common pattern.' },
+          { token: '"NotAction"', type: 'keyword', note: 'AWS condition-style key meaning "apply this Effect to everything EXCEPT these actions." Pairs with "Action" elsewhere. Docs: IAM policy elements reference.' },
+          { token: '"iam:*", "organizations:*", "support:*"', type: 'keyword', note: 'AWS service-action patterns. Format is "<service-prefix>:<action>" with * as a wildcard. Full action list per service: docs.aws.amazon.com/service-authorization (Actions tables).' },
+          { token: '"aws:RequestedRegion"', type: 'keyword', note: 'AWS global condition key — the region of the API call being evaluated. Lookup: service-authorization → "AWS global condition context keys".' },
+          { token: '"us-east-1", "us-west-2"', type: 'user', note: 'Your choice — the AWS region codes you want to allow. Region codes are AWS-defined (find them at docs.aws.amazon.com/general → Regions); which ones you allow is your call.' },
+          { token: '"Sid": "DenyOtherRegions"', type: 'user', note: 'Optional statement id — your label, any string you want (helpful in logs). AWS doesn\'t care what it says.' },
+        ],
       },
     ],
     diagram: `         IAM / RBAC                  SCP
@@ -371,18 +377,16 @@ A user in <code>prod-001</code> tries to <code>iam:CreateUser</code> in <code>us
       steps: [
         {
           label: 'Q1',
-          question: 'An admin runs <code>ec2:RunInstances</code> in <code>eu-west-1</code> against an account inside an OU that has the "Deny non-allowed regions" SCP attached. Their IAM policy grants <code>ec2:*</code>. What happens, and why?',
+          question: 'An account sits inside an OU with an SCP that denies any action where <code>aws:RequestedRegion</code> is not in <code>["us-east-1", "us-west-2"]</code> (with <code>iam:*</code>, <code>organizations:*</code>, <code>support:*</code> exempted via <code>NotAction</code>). An admin in that account runs <code>ec2:RunInstances</code> in <code>eu-west-1</code>. Their IAM policy grants <code>ec2:*</code>. What happens, and why?',
           hint: 'SCP evaluates before IAM. An explicit Deny anywhere on the path wins, regardless of what IAM allows.',
           answer: `<p>The call is <strong>denied</strong> at the SCP layer before IAM is even consulted.</p>
-<p>Why: AWS evaluates the SCP path first. The SCP's Deny statement matches because <code>aws:RequestedRegion = eu-west-1</code> is not in the allowed list (<code>us-east-1</code>, <code>us-west-2</code>). Once an SCP denies, IAM never gets a vote. The admin sees <code>AccessDenied</code> with an "explicit deny in a service control policy" annotation. Their <code>ec2:*</code> IAM grant is irrelevant — the SCP caps what is even possible.</p>`,
-          starter: 'What happens:\n\nWhy:',
+<p>Why: AWS evaluates the SCP path first. The SCP's Deny statement matches because <code>aws:RequestedRegion = eu-west-1</code> is not in the allowed list (<code>us-east-1</code>, <code>us-west-2</code>), and <code>ec2:RunInstances</code> is not on the <code>NotAction</code> exemption list. Once an SCP denies, IAM never gets a vote. The admin sees <code>AccessDenied</code> with an "explicit deny in a service control policy" annotation. Their <code>ec2:*</code> IAM grant is irrelevant — the SCP caps what is even possible.</p>`,
         },
         {
           label: 'Q2',
-          question: 'Why does an "Allow"-effect SCP at a child account never <em>grant</em> a permission that a parent OU\'s SCP denies?',
+          question: 'A parent OU has an SCP that denies <code>s3:DeleteBucket</code> on every account beneath it. A child account adds its own SCP whose <code>Effect</code> is <code>Allow</code> for <code>s3:DeleteBucket</code>. Will an admin in the child account be able to delete a bucket? Why or why not?',
           hint: 'SCPs are <em>restrictions</em>, not grants. Read the conceptDive callout above if you want a refresher.',
-          answer: `<p>An Allow SCP doesn't grant anything — at best, it refrains from denying. The parent OU's Deny stays on the path and fires. Both checkpoints evaluate; the parent says no; end of story. IAM is never consulted. This is the "most specific rule wins" trap — that pattern works in IAM permissions and file ACLs, but <b>not</b> in SCPs. Restrictions stack; they do not override.</p>`,
-          starter: 'Why an Allow SCP doesn\'t un-deny a parent Deny:',
+          answer: `<p>No. An Allow SCP doesn't grant anything — at best, it refrains from denying. The parent OU's Deny stays on the path and fires. Both checkpoints evaluate; the parent says no; end of story. IAM is never consulted. This is the "most specific rule wins" trap — that pattern works in IAM permissions and file ACLs, but <b>not</b> in SCPs. Restrictions stack; they do not override.</p>`,
         },
       ],
       selfCheck: [
@@ -457,6 +461,14 @@ exports.handler = async (event) => {
     Annotation: compliant ? "Has Owner tag" : "Missing Owner tag",
   };
 };`,
+        exampleAnnotations: [
+          { token: 'exports.handler', type: 'keyword', note: 'AWS Lambda contract — the function name AWS will invoke. Lambda expects this exact export shape for Node.js handlers. Docs: docs.aws.amazon.com/lambda → Handler.' },
+          { token: 'event.invokingEvent', type: 'keyword', note: 'AWS Config sends this field on every rule invocation. Docs: AWS Config Developer Guide → "Event schema for custom rules".' },
+          { token: 'configurationItem', type: 'keyword', note: 'AWS Config schema — the JSON blob describing the resource being evaluated. Same shape across every resource type.' },
+          { token: '"COMPLIANT" | "NON_COMPLIANT"', type: 'keyword', note: 'AWS Config returns one of three strings: "COMPLIANT", "NON_COMPLIANT", or "NOT_APPLICABLE". Anything else and Config rejects the evaluation.' },
+          { token: '"Owner"', type: 'user', note: 'Your choice — the tag key your org standard requires. Tag-key naming is your governance decision.' },
+          { token: '"Has Owner tag" / "Missing Owner tag"', type: 'user', note: 'Your annotation string — surfaces in the AWS Config console for on-call. Free-form text; make it actionable.' },
+        ],
       },
     ],
     diagram: `   Resources change → Config records the change
@@ -515,7 +527,6 @@ return {
 </li>
 </ol>
 <p>The annotation lands in the Config console — it is what FinOps reads first when triaging. Vague annotations create extra round-trips.</p>`,
-          starter: 'Change 1:\n\nChange 2:',
         },
       ],
       selfCheck: [
@@ -631,7 +642,6 @@ return {
 <li><strong>Where to attach:</strong> the <strong>organization root</strong>. Covers every account, present and future. Exempt the management account via <code>NotAction</code> if it must keep an IAM user (rare).</li>
 <li><strong>Why "preventive":</strong> the SCP is checked <em>before</em> IAM during action evaluation. An admin in any member account cannot succeed — the call is rejected before any IAM user is created. No detective sweep needed; the bad resource never exists.</li>
 </ul>`,
-          starter: 'Artifact:\n\nWhere to attach:\n\nWhy this is "preventive":',
         },
         {
           label: 'Q2',
@@ -643,7 +653,6 @@ return {
 <li><strong>Proactive — CloudFormation Hook.</strong> Inspects the template before resources are created. Like preventive but at template-shape level; cannot affect resources that already exist.</li>
 </ul>
 <p>So when you inherit a messy account, the first control type you reach for is detective — it tells you what's already wrong. SCPs and Hooks stop the bleed going forward.</p>`,
-          starter: 'Preventive:\nDetective:\nProactive:\n\nEasiest to retro-apply:',
         },
       ],
       selfCheck: [
@@ -725,6 +734,16 @@ return {
     }
   }
 }`,
+        exampleAnnotations: [
+          { token: '"policyType": "Custom"', type: 'keyword', note: 'Azure keyword. Valid values: "Custom" | "BuiltIn" | "Static". You only ever author "Custom"; the others are Microsoft-managed.' },
+          { token: '"mode": "Indexed"', type: 'keyword', note: 'Azure keyword. "Indexed" = only resources that support tags+locations (skip ResourceGroup-level stuff). Other valid values: "All", "Microsoft.KeyVault.Data", etc. Docs: Azure Policy → Definition structure.' },
+          { token: '"if" / "then" / "allOf"', type: 'keyword', note: 'Azure Policy rule grammar. Other logical operators: "anyOf", "not". Docs: Azure Policy condition operators reference.' },
+          { token: '"field": "type"', type: 'keyword', note: 'Azure Policy reserved alias — the resource type. Other reserved aliases: "name", "kind", "location", "tags". Plus thousands of resource-specific aliases (look up via `az provider show` or Get-AzPolicyAlias).' },
+          { token: '"Microsoft.Storage/storageAccounts"', type: 'keyword', note: 'Azure resource type identifier — fixed string defined by the Microsoft.Storage resource provider. List all types: `az provider show -n Microsoft.Storage`.' },
+          { token: '"Microsoft.Storage/.../allowBlobPublicAccess"', type: 'keyword', note: 'Azure Policy alias — a typed path into the resource\'s properties. Discover with `Get-AzPolicyAlias -NamespaceMatch Microsoft.Storage`.' },
+          { token: '"effect": "deny"', type: 'keyword', note: 'Azure Policy effect. One of six: "audit", "deny", "append", "modify", "deployIfNotExists", "auditIfNotExists" (plus legacy "disabled"). Docs: Understand Policy effects.' },
+          { token: '"displayName": "Storage: deny public blob access"', type: 'user', note: 'Your label — surfaces in the Azure Portal compliance pane. Free-form; make it search-friendly.' },
+        ],
       },
     ],
     fieldNotes: [
@@ -741,20 +760,29 @@ return {
       steps: [
         {
           label: 'Q1',
-          question: 'In the policy example above ("Storage: deny public blob access"), identify (a) the <em>field</em> being checked, (b) the <em>operator</em>, (c) the <em>effect</em>. What would you change to make it <strong>audit-only</strong>?',
+          question: `Given this policy rule:
+<pre><code>"if": {
+  "allOf": [
+    { "field": "type",
+      "equals": "Microsoft.Storage/storageAccounts" },
+    { "field": "Microsoft.Storage/storageAccounts/allowBlobPublicAccess",
+      "equals": "true" }
+  ]
+},
+"then": { "effect": "deny" }</code></pre>
+Identify (a) the <em>field</em> being checked (the one that does the actual work), (b) the <em>operator</em>, (c) the <em>effect</em>. What single edit makes the policy <strong>audit-only</strong> (log non-compliance instead of blocking the deploy)?`,
           hint: 'Audit-only = log non-compliance, do not block.',
           answer: `<ul>
-<li>(a) Field: <code>Microsoft.Storage/storageAccounts/allowBlobPublicAccess</code> (the <code>type</code> field narrows to storage accounts; the second condition is the real check).</li>
+<li>(a) Field: <code>Microsoft.Storage/storageAccounts/allowBlobPublicAccess</code> (the <code>type</code> field just narrows to storage accounts; the second condition is the real check).</li>
 <li>(b) Operator: <code>equals</code> — comparing the field to the string <code>"true"</code>.</li>
 <li>(c) Effect: <code>deny</code>.</li>
 </ul>
 <p><strong>Audit-only:</strong> change <code>"effect": "deny"</code> to <code>"effect": "audit"</code>. The condition is unchanged — only the consequence differs. Audit is the standard "soft launch" before promoting to Deny.</p>`,
-          starter: '(a) Field:\n(b) Operator:\n(c) Effect:\n\nTo make it audit-only: ',
         },
         {
           label: 'Q2',
-          question: 'A teammate assigns a <code>DeployIfNotExists</code> policy to install the MDE extension on VMs, but it never actually deploys anything. The compliance pane just shows "non-compliant" forever. What\'s the #1 cause and how do you fix it?',
-          hint: 'Read the first field-note above. DINE needs something the audit-only policy didn\'t.',
+          question: 'A teammate assigns a <code>DeployIfNotExists</code> policy to install the MDE extension on VMs, but it never actually deploys anything. The compliance pane just shows "non-compliant" forever. (Background: DINE and Modify effects don\'t run directly on the resource — they call out to a side-channel that deploys/modifies something, and that side-channel needs an authenticated identity.) What\'s the #1 cause and how do you fix it?',
+          hint: 'DINE deploys things on your behalf, so it needs something to act AS. Without that, the deploy step silently does nothing.',
           answer: `<p>The #1 cause is a <strong>missing managed identity on the assignment</strong>, OR the identity is present but doesn't have the RBAC role it needs to do the deployment. DINE policies can't deploy resources unless the assignment has an identity (System- or User-Assigned) <em>and</em> that identity has been granted (typically) <code>Contributor</code> at the assignment scope.</p>
 <p><strong>Fix:</strong></p>
 <ol>
@@ -762,7 +790,6 @@ return {
 <li>Grant the identity the required role at the scope. The policy definition usually names what it needs in <code>policyRule.then.details.roleDefinitionIds</code>.</li>
 <li>Trigger a fresh evaluation with <code>Start-AzPolicyComplianceScan</code> — don't wait 24h for the next periodic sweep.</li>
 </ol>`,
-          starter: 'Cause:\n\nFix:',
         },
       ],
       selfCheck: [
@@ -852,6 +879,15 @@ return {
     }
   }
 }`,
+        exampleAnnotations: [
+          { token: '"mode": "All"', type: 'keyword', note: 'Azure keyword. Values: "All" (includes resource groups & subscriptions) or "Indexed" (only resources that support tags+location). Docs: Azure Policy mode reference.' },
+          { token: '"parameters"', type: 'keyword', note: 'Azure Policy schema. Each parameter has a "type" (String, Array, Integer, Boolean, Object) and optional metadata.' },
+          { token: '"type": "Array"', type: 'keyword', note: 'Azure Policy parameter type. Valid values: "String", "Array", "Object", "Boolean", "Integer", "Float", "DateTime".' },
+          { token: '"not" / "in"', type: 'keyword', note: 'Azure Policy logical/comparison operators. "not" inverts; "in" checks array membership. Other operators: equals, like, contains, exists, greater, less, count.' },
+          { token: '"[parameters(\'allowedLocations\')]"', type: 'keyword', note: 'Azure Policy expression syntax — square-bracket expressions are evaluated at runtime. Function name "parameters" is fixed; the argument is your parameter name.' },
+          { token: '"allowedLocations"', type: 'user', note: 'Your parameter name — any identifier you choose. Used as the argument to parameters() above.' },
+          { token: '"displayName": "Allowed locations"', type: 'user', note: 'Your label, shown in the Portal.' },
+        ],
       },
       {
         cloud: 'azure',
@@ -906,6 +942,16 @@ return {
     }
   }
 }`,
+        exampleAnnotations: [
+          { token: '"effect": "deployIfNotExists"', type: 'keyword', note: 'Azure Policy effect (one of six). DINE deploys an ARM template if the existenceCondition is not satisfied. Docs: Understand Policy effects → deployIfNotExists.' },
+          { token: '"details"', type: 'keyword', note: 'Required for DINE/Modify/AINE effects. Holds the related-resource type, existence check, RBAC roles, and (for DINE) the deployment template.' },
+          { token: '"existenceCondition"', type: 'keyword', note: 'Azure Policy schema — the leaf check that says "the related resource I would have deployed already exists." Without it, DINE re-deploys every eval cycle.' },
+          { token: '"roleDefinitionIds"', type: 'keyword', note: 'Required for DINE/Modify. List of built-in role IDs the assignment\'s managed identity must hold to do the deployment. Find IDs with `Get-AzRoleDefinition`.' },
+          { token: '"/providers/Microsoft.Authorization/roleDefinitions/b24988ac-...24c"', type: 'keyword', note: 'Azure built-in role ID for Contributor — same GUID across all tenants. List of built-in role IDs: docs.microsoft.com → Azure built-in roles.' },
+          { token: '"MDE.Windows" / "Microsoft.Azure.AzureDefenderForServers"', type: 'keyword', note: 'Microsoft-defined extension type and publisher name for Defender for Endpoint. Discover with `Get-AzVMExtensionImage` against the publisher.' },
+          { token: '"Microsoft.Compute/virtualMachines"', type: 'keyword', note: 'Azure resource type. Provider-defined; the canonical list is `az provider show -n Microsoft.Compute`.' },
+          { token: '"mode": "incremental"', type: 'keyword', note: 'ARM deployment mode. "incremental" adds/updates; "complete" deletes anything not in the template. DINE always uses "incremental".' },
+        ],
       },
       {
         cloud: 'azure',
@@ -947,6 +993,13 @@ return {
     }
   }
 }`,
+        exampleAnnotations: [
+          { token: '"effect": "auditIfNotExists"', type: 'keyword', note: 'Azure Policy effect — flags non-compliance when a related resource is missing/misconfigured. Same shape as DINE but with no deployment + no managed identity required.' },
+          { token: '"Microsoft.KeyVault/vaults"', type: 'keyword', note: 'Azure resource type for Key Vault. Provider-defined.' },
+          { token: '"Microsoft.Insights/diagnosticSettings"', type: 'keyword', note: 'Azure resource type for diagnostic settings — the related resource AINE looks for.' },
+          { token: '"logs.enabled" / "workspaceId"', type: 'keyword', note: 'Property aliases on Microsoft.Insights/diagnosticSettings. Discover with `Get-AzPolicyAlias -NamespaceMatch Microsoft.Insights`.' },
+          { token: '"exists": "true"', type: 'keyword', note: 'Azure Policy operator. The string "true" / "false" is the keyword form — not the boolean true. Same for "equals" comparisons to boolean-typed properties.' },
+        ],
       },
     ],
     diagram: `Anatomy at a glance:
@@ -985,18 +1038,42 @@ return {
       steps: [
         {
           label: 'Q1',
-          question: `Read the parameterized "allowed locations" example above. <strong>(a)</strong> What does <code>"in": "[parameters('allowedLocations')]"</code> evaluate to at runtime if the assignment passes <code>["eastus","westus2"]</code>? <strong>(b)</strong> Why is there a <code>not</code> wrapper? <strong>(c)</strong> If you removed the <code>not</code> wrapper without changing anything else, what would the policy actually do?`,
+          question: `Given this parameterized "allowed locations" rule:
+<pre><code>"parameters": {
+  "allowedLocations": { "type": "Array" }
+},
+"policyRule": {
+  "if": {
+    "not": {
+      "field": "location",
+      "in": "[parameters('allowedLocations')]"
+    }
+  },
+  "then": { "effect": "deny" }
+}</code></pre>
+<strong>(a)</strong> What does <code>"in": "[parameters('allowedLocations')]"</code> evaluate to at runtime if the assignment passes <code>["eastus","westus2"]</code>? <strong>(b)</strong> Why is there a <code>not</code> wrapper? <strong>(c)</strong> If you removed the <code>not</code> wrapper without changing anything else, what would the policy actually do?`,
           hint: 'Read the if/then as "if condition is true, then apply effect."',
           answer: `<ul>
 <li>(a) It evaluates to <code>"in": ["eastus", "westus2"]</code> — the parameter is substituted at evaluation time.</li>
 <li>(b) The <code>not</code> wrapper inverts the check. The leaf says "location IS in the allowed list"; the <code>not</code> turns it into "location is NOT in the allowed list" — which is the condition that triggers the deny.</li>
 <li>(c) Remove the <code>not</code> and the rule would deny resources <em>whose location IS in the allowed list</em> — the exact opposite of intent. Anyone deploying to <code>eastus</code> would be blocked; anyone deploying to <code>westeurope</code> would succeed. This is the most common Azure Policy logic bug: forgetting the <code>not</code> on a deny.</li>
 </ul>`,
-          starter: '(a) At runtime "in" becomes:\n(b) The "not" is there because:\n(c) Without "not":',
         },
         {
           label: 'Q2',
-          question: 'Look at the MDE DeployIfNotExists example. <strong>If you remove the <code>existenceCondition</code> block entirely</strong>, what happens to every Windows VM in the assignment scope on the next evaluation? Why?',
+          question: `Given a <code>DeployIfNotExists</code> policy targeting Windows VMs whose <code>then.details</code> block looks like this (abridged):
+<pre><code>"details": {
+  "type": "Microsoft.Compute/virtualMachines/extensions",
+  "roleDefinitionIds": [ "<contributor-role-id>" ],
+  "existenceCondition": {
+    "allOf": [
+      { "field": ".../extensions/type",      "equals": "MDE.Windows" },
+      { "field": ".../extensions/publisher", "equals": "Microsoft.Azure.AzureDefenderForServers" }
+    ]
+  },
+  "deployment": { /* ARM template that installs MDE */ }
+}</code></pre>
+<strong>If you remove the <code>existenceCondition</code> block entirely</strong>, what happens to every Windows VM in the assignment scope on the next evaluation? Why?`,
           hint: 'existenceCondition is how the policy knows "the related resource I care about already exists."',
           answer: `<p>Without the <code>existenceCondition</code>, the policy has no way to know that the MDE extension is already installed — every VM is treated as <strong>non-compliant</strong> on every eval. Two consequences:</p>
 <ul>
@@ -1004,11 +1081,10 @@ return {
 <li>The managed identity re-runs the deployment on every eval cycle (every change event + every 24h scan). The deployment is idempotent in this case (ARM won't re-install if the extension is identical), but you waste deployments, the activity log fills with noise, and you give the auditor a confusing "always non-compliant" dashboard.</li>
 </ul>
 <p>The <code>existenceCondition</code> is what tells the policy "stop, the thing I would have deployed is already here." Forgetting it is the #2 DINE bug after missing managed identity.</p>`,
-          starter: 'What happens to every VM:\n\nWhy:',
         },
         {
           label: 'Q3',
-          question: 'You have an existing <code>Deny</code> policy for "storage accounts must use HTTPS." A new requirement: <strong>also</strong> deploy diagnostic settings to send storage logs to Log Analytics. You decide to convert the Deny into a DINE. <strong>What three things do you need to add to the JSON to make that conversion work?</strong>',
+          question: `You have an existing <code>Deny</code> policy whose <code>if</code> block matches storage accounts that don't have HTTPS-only enabled. A new requirement: <strong>instead of denying, also deploy a diagnostic-settings resource</strong> on each non-compliant storage account so its logs flow to your Log Analytics workspace. You decide to convert the Deny into a DINE. <strong>What three things must you add or change in the JSON (and at the assignment) to make that conversion work?</strong>`,
           hint: 'DINE = effect + details (type + existenceCondition + deployment) + managed identity at the assignment.',
           answer: `<ol>
 <li><strong>Change the effect</strong> from <code>"deny"</code> to <code>"deployIfNotExists"</code>. The condition <code>if</code> block stays the same — you still want to act on storage accounts.</li>
@@ -1022,7 +1098,6 @@ return {
 </li>
 <li><strong>On the policy <em>assignment</em></strong> (not the definition), <strong>enable a managed identity</strong> and grant it the role at the assignment scope. Without this the assignment exists but never actually deploys anything — the silent-noop failure mode.</li>
 </ol>`,
-          starter: 'Change 1 (effect):\n\nChange 2 (details block):\n\nChange 3 (assignment):',
         },
       ],
       selfCheck: [
@@ -1120,7 +1195,6 @@ return {
 <li><code>ES-1</code> — <strong>Endpoint Security, control 1.</strong> "Every server runs an EDR" — the MDE-on-VMs check.</li>
 <li><strong>Portal path</strong>: Defender for Cloud → Regulatory Compliance → Microsoft Cloud Security Benchmark → expand the control family (NS or ES) → click the specific control. You see pass/fail per resource + the underlying policy assignment.</li>
 </ul>`,
-          starter: 'NS-1 covers:\nES-1 covers:\n\nWhere to look:',
         },
         {
           label: 'Q2',
@@ -1133,7 +1207,6 @@ return {
 <li><strong>Secure Score</strong> — the rolling % of remediated recommendations. Fix one → score ticks up. A new non-compliant resource appears → score ticks down.</li>
 </ol>
 <p>So the chain is: <strong>Policy definition → MCSB bundles policies → Defender for Cloud surfaces non-compliance as recommendations → Secure Score aggregates remediation rate.</strong></p>`,
-          starter: '1. Azure Policy:\n2. MCSB:\n3. Defender for Cloud:\n4. Secure Score:',
         },
       ],
       selfCheck: [
@@ -1224,6 +1297,15 @@ foreach ($sub in Get-AzSubscription) {
     Write-Output "FIXED: $($acct.StorageAccountName)"
   }
 }`,
+        exampleAnnotations: [
+          { token: 'Connect-AzAccount -Identity', type: 'keyword', note: 'Az PowerShell cmdlet (`Az.Accounts` module). The `-Identity` switch tells it to authenticate using the host\'s managed identity — no secrets needed. Docs: Az.Accounts → Connect-AzAccount.' },
+          { token: 'Get-AzSubscription / Set-AzContext / Get-AzStorageAccount / Set-AzStorageAccount', type: 'keyword', note: 'Az PowerShell cmdlets. Naming convention is fixed: <Verb>-Az<Noun>. Lookup: `Get-Command -Module Az.*`.' },
+          { token: '$acct.PublicNetworkAccess', type: 'keyword', note: 'Property on Microsoft.Storage/storageAccounts. Valid values: "Enabled", "Disabled". Defined by the storage resource provider.' },
+          { token: "'Disabled'", type: 'keyword', note: 'Azure-defined enum value for PublicNetworkAccess. Other valid value: "Enabled".' },
+          { token: "$acct.Tags['complianceWaiver']", type: 'user', note: 'Your tag key — pick a convention and stick to it across runbooks. Tags are case-sensitive on Azure.' },
+          { token: "'true'", type: 'user', note: 'Your sentinel value for the waiver tag — a string, since Azure tag values are strings. Could also be a date, JIRA ID, etc.' },
+          { token: 'Write-Output', type: 'keyword', note: 'PowerShell cmdlet — writes to the runbook output stream (~1MB job limit). For audit evidence, also write to Log Analytics via the Data Collector API.' },
+        ],
       },
     ],
     fieldNotes: [
@@ -1255,11 +1337,19 @@ foreach ($sub in Get-AzSubscription) {
 # or for a user-assigned identity:
 Connect-AzAccount -Identity -AccountId &lt;client-id-of-uami&gt; | Out-Null</code></pre>
 <p>No secrets, no rotation, no Run As Account dependency.</p>`,
-          starter: 'What\'s wrong:\n\nWhat it should do:',
         },
         {
           label: 'Q2',
-          question: 'The runbook in the panel above runs hourly. <strong>(a)</strong> Why is the <code>if ($acct.PublicNetworkAccess -eq \'Disabled\') { continue }</code> line important? <strong>(b)</strong> Why does the waiver tag check matter for an auditor? <strong>(c)</strong> What would you add to the script to write each action to Log Analytics?',
+          question: `Given an hourly remediation runbook that loops every storage account and contains these two lines before the <code>Set-AzStorageAccount</code> call:
+<pre><code># idempotency check
+if ($acct.PublicNetworkAccess -eq 'Disabled') { continue }
+
+# waiver tag check
+if ($acct.Tags['complianceWaiver'] -eq 'true') {
+  Write-Output "SKIP (waiver): $($acct.StorageAccountName)"
+  continue
+}</code></pre>
+<strong>(a)</strong> Why is the idempotency check important? <strong>(b)</strong> Why does the waiver tag check matter for an auditor? <strong>(c)</strong> What would you add to the script to write each action to Log Analytics so it shows up as audit evidence?`,
           hint: 'Idempotency, audit trail, and the Data Collector API.',
           answer: `<ul>
 <li>(a) <strong>Idempotency.</strong> Without that line, the runbook calls <code>Set-AzStorageAccount</code> on every account every hour, even ones already compliant. Each call is an API operation that lands in the Activity Log — noisy, costly, and confuses anyone reviewing recent changes. The <code>continue</code> means "this account is already in the desired state; don\'t touch it."</li>
@@ -1277,7 +1367,6 @@ Send-LogToWorkspace -WorkspaceId $env:LA_WS_ID -SharedKey $env:LA_KEY \`
                     -LogType "ComplianceRemediation" -Body ($logRow | ConvertTo-Json)</code></pre>
 The custom table is then searchable in KQL alongside other audit data, and the runbook\'s actions become evidenceable.</li>
 </ul>`,
-          starter: '(a) Why idempotency:\n(b) Why waiver tag:\n(c) Log Analytics write:',
         },
       ],
       selfCheck: [
@@ -1361,6 +1450,15 @@ Resources
 | where properties.publicNetworkAccess == "Enabled"
 | project name, location
 | order by location asc`,
+        exampleAnnotations: [
+          { token: 'Resources', type: 'keyword', note: 'Azure Resource Graph table name — built into ARG. Other ARG tables: PolicyResources, SecurityResources, HealthResources, AdvisorResources. Docs: Resource Graph table reference.' },
+          { token: 'where / project / order by', type: 'keyword', note: 'KQL operators. Full list: docs.microsoft.com/azure/data-explorer/kusto/query → "Tabular operators".' },
+          { token: '=~', type: 'keyword', note: 'KQL case-insensitive equals. Use this for type names and tag names. The plain `==` is case-sensitive.' },
+          { token: 'type / location / name', type: 'keyword', note: 'Top-level resource fields in ARG — defined by Azure Resource Manager, available on every resource.' },
+          { token: 'properties.publicNetworkAccess', type: 'keyword', note: 'Nested property under the resource\'s `properties` blob. Field path varies per resource type; discover with `Resources | where type=~"<type>" | take 1` and inspect properties.' },
+          { token: '"microsoft.storage/storageaccounts"', type: 'keyword', note: 'Azure resource type identifier (lowercase form in ARG, mixed-case form `Microsoft.Storage/storageAccounts` in Policy). Provider-defined.' },
+          { token: '"Enabled"', type: 'user', note: 'Your filter value — but constrained to the set the resource provider defines. For publicNetworkAccess: "Enabled" | "Disabled".' },
+        ],
       },
     ],
     conceptDive: {
@@ -1437,7 +1535,6 @@ Resources
 <li>(a) <strong>Every Key Vault and storage account, across every subscription the caller can read, that is missing or has an empty Owner tag.</strong> Output columns: <code>subscriptionId</code>, <code>resourceGroup</code>, <code>name</code>, <code>type</code>. Sorted by sub, then type, then name.</li>
 <li>(b) Two things. <strong>Readability</strong> — the sensitive list lives at the top, named, easy to extend. <strong>Reuse</strong> — if you reference the list more than once in the query (you don\'t here, but most real queries do), <code>let</code> defines it once. Bonus: <code>let</code> with a <code>dynamic([])</code> array is the idiomatic way to write "in this list" filters.</li>
 </ul>`,
-          starter: '(a) Result set:\n(b) Why let:',
         },
         {
           label: 'Q2',
@@ -1462,7 +1559,6 @@ Resources
 <li>(b) <strong>Every VM that does NOT have the MDE extension installed</strong>, across every subscription the caller can read. The right side is a list of VM IDs that have MDE; the left is every VM; <code>leftanti</code> = "VMs minus VMs-with-MDE."</li>
 <li>(c) Replace with <code>inner</code> and you flip the meaning to <strong>every VM that DOES have MDE installed</strong>. (The columns would also widen since <code>inner</code> brings the right-side columns; you\'d typically <code>project</code> away the duplicates.) <code>leftanti</code> is the KQL idiom for "what\'s missing" — memorize the pattern.</li>
 </ul>`,
-          starter: '(a) leftanti means:\n(b) Result set:\n(c) With inner:',
         },
       ],
       selfCheck: [
@@ -1550,6 +1646,12 @@ Example query — find every public storage account, tenant-wide:
   | where properties.allowBlobPublicAccess == true
   | project subscriptionId, resourceGroup, name, location
   | order by subscriptionId, name`,
+        exampleAnnotations: [
+          { token: 'Resources / PolicyResources / SecurityResources / ResourceChanges', type: 'keyword', note: 'ARG table names — fixed, defined by the Resource Graph service. Full table list: docs.microsoft.com/azure/governance/resource-graph → "Resource Graph tables".' },
+          { token: 'properties.allowBlobPublicAccess', type: 'keyword', note: 'Property path under `properties` for Microsoft.Storage/storageAccounts. Provider-defined. Inspect with `Resources | where type=~"microsoft.storage/storageaccounts" | take 1`.' },
+          { token: '"microsoft.storage/storageaccounts"', type: 'keyword', note: 'Azure resource type — lowercase form is what ARG stores. Use `=~` for case-insensitive matching.' },
+          { token: 'subscriptionId / resourceGroup / name / location', type: 'keyword', note: 'Top-level ARM resource fields, available on every row in Resources.' },
+        ],
       },
     ],
     fieldNotes: [
@@ -1577,7 +1679,6 @@ Example query — find every public storage account, tenant-wide:
 <li>If they don\'t match, you\'re missing Reader. Request it at the Tenant Root or top MG, not per-sub — one grant, future-proof.</li>
 </ol>
 <p>This is the #1 source of "the ARG numbers don\'t match" in audits. Fix the Reader scope and the count snaps to reality.</p>`,
-          starter: 'Cause:\n\nHow to confirm:',
         },
         {
           label: 'Q2',
@@ -1603,7 +1704,6 @@ PolicyResources
 <li><code>inner</code> join keeps only storage accounts that <em>have</em> at least one non-compliance state. Use <code>leftouter</code> if you want all storage accounts and mark which ones are flagged.</li>
 <li>For human-readable policy names, you\'d join again against <code>PolicyResources | where type == "microsoft.authorization/policydefinitions"</code> on <code>policyDef</code> — left as an exercise.</li>
 </ul>`,
-          starter: '// Resources + PolicyResources join\n',
         },
       ],
       selfCheck: [
@@ -1725,7 +1825,6 @@ PolicyResources
 </li>
 <li><strong>What to quote in standup</strong> — give a recovery projection, not a "we\'re working on it." Example: <em>"Score 70 today; 2 fixes landing today, recover to 75 by EOD; 1 planned fix this week, recover to 79 by Friday."</em> Stakeholders want a number.</li>
 </ol>`,
-          starter: '(a) Where to click:\n(b) Triage matrix:\n(c) Standup number:',
         },
         {
           label: 'Q2',
@@ -1743,7 +1842,6 @@ PolicyResources
 <li><strong>If the rec is genuinely wrong for our org</strong> — push back on the policy itself. Steady growth in suppressions/exemptions for the same rec means the rec is misaligned with the org\'s risk profile.</li>
 </ol>
 <p><strong>Suppression has a narrow legit use</strong>: cosmetic recs you genuinely never want to see (e.g., "consider Plan X"), or short-term incident pauses. Otherwise: exempt, don\'t suppress.</p>`,
-          starter: 'Why suppression isn\'t a fix:\n\nWhat they should do:',
         },
       ],
       selfCheck: [
@@ -1818,6 +1916,13 @@ PolicyResources
     "policyDefinitionId": "/providers/.../Configure-Microsoft-Defender-for-Endpoint"
   }
 }`,
+        exampleAnnotations: [
+          { token: '"scope": "/providers/Microsoft.Management/managementGroups/..."', type: 'keyword', note: 'Azure resource-ID path format for a Management Group. The prefix `/providers/Microsoft.Management/managementGroups/` is fixed; only the final segment is your MG name.' },
+          { token: '"identity": { "type": "SystemAssigned" }', type: 'keyword', note: 'Azure managed-identity schema on an assignment. Valid types: "SystemAssigned" | "UserAssigned" | "None". Required for DINE/Modify effects.' },
+          { token: '"policyDefinitionId"', type: 'keyword', note: 'Azure Policy assignment schema. References a policy or initiative by ARM resource ID. For built-in initiatives the prefix is `/providers/Microsoft.Authorization/policySetDefinitions/`.' },
+          { token: '"Workloads"', type: 'user', note: 'Your Management Group name — pick from your MG hierarchy.' },
+          { token: '"Defender for Endpoint auto-onboard"', type: 'user', note: 'Your label for the assignment. Shows in the Portal.' },
+        ],
       },
     ],
     fieldNotes: [
@@ -1846,7 +1951,6 @@ PolicyResources
 <li><strong>Threat & Vulnerability Management</strong> — CVE inventory + patch prioritization per host. Replaces a separate vuln-management product for most orgs.</li>
 </ol>
 <p>For compliance: MCSB ES-1 ("every server runs an EDR") is satisfied by P2, not P1.</p>`,
-          starter: 'P2 adds:\n  1.\n  2.\n  3.\n  4.',
         },
         {
           label: 'Q2',
@@ -1862,7 +1966,6 @@ PolicyResources
 <li>Within ~1h the DINE policy installs the extension on each VM; compliance pane updates; secure score recovers.</li>
 </ol>
 <p>This is the #1 "MDE not installed" cause. Always check assignment scope before assuming the policy is broken.</p>`,
-          starter: 'Cause:\n\nFix:',
         },
       ],
       selfCheck: [
@@ -1964,6 +2067,18 @@ resource "aws_organizations_policy_attachment" "to_workloads" {
 output "scp_arn" {
   value = aws_organizations_policy.deny_regions.arn
 }`,
+        exampleAnnotations: [
+          { token: 'provider "aws"', type: 'keyword', note: 'Terraform top-level block. The string after `provider` is the provider name (here `aws`, from hashicorp/aws). Provider list: registry.terraform.io.' },
+          { token: 'resource "aws_organizations_policy"', type: 'keyword', note: 'AWS provider resource type. The naming convention `aws_<service>_<thing>` is fixed by the provider. Full list: registry.terraform.io/providers/hashicorp/aws/latest/docs.' },
+          { token: 'resource "aws_organizations_policy_attachment"', type: 'keyword', note: 'AWS provider resource type. Define + attach are two separate resources in the aws provider. Docs: hashicorp/aws → aws_organizations_policy_attachment.' },
+          { token: 'type = "SERVICE_CONTROL_POLICY"', type: 'keyword', note: 'AWS Organizations enum. Other valid values: "TAG_POLICY", "BACKUP_POLICY", "AISERVICES_OPT_OUT_POLICY". Defined by AWS Organizations API.' },
+          { token: 'jsonencode({ ... })', type: 'keyword', note: 'Terraform built-in function — turns an HCL map into a JSON string. Reference: terraform.io/language/functions/jsonencode.' },
+          { token: 'var.allowed_regions', type: 'keyword', note: 'Terraform expression syntax for reading a variable. `var.<name>` is fixed; `<name>` matches your `variable` block.' },
+          { token: 'aws_organizations_policy.deny_regions.id', type: 'keyword', note: 'Terraform reference expression — `<resource_type>.<local_name>.<attr>`. Resource type from the provider; local name and attribute name from your code.' },
+          { token: '"deny_regions" / "to_workloads" / "allowed_regions"', type: 'user', note: 'Your local Terraform names — any valid identifier. Used to reference the resource elsewhere in the module.' },
+          { token: '"ou-abcd-1234workloads"', type: 'user', note: 'Your AWS Organizations OU ID — looked up in the AWS Organizations console or via `aws organizations list-organizational-units-for-parent`. AWS-generated, but which one you pick is your call.' },
+          { token: '"DenyNonAllowedRegions" / "us-east-1" / "us-west-2"', type: 'user', note: 'Your choices — the policy name, and the regions you allow. Region codes are AWS-defined (list at docs.aws.amazon.com/general); which ones to allow is your governance decision.' },
+        ],
       },
       {
         cloud: 'azure',
@@ -1994,6 +2109,17 @@ resource "azurerm_management_group_policy_assignment" "mcsb_at_workloads" {
   display_name         = "MCSB - Workloads"
   enforce              = true
 }`,
+        exampleAnnotations: [
+          { token: 'provider "azurerm"', type: 'keyword', note: 'Terraform provider (hashicorp/azurerm). The empty `features {}` block is required even when unused. Docs: registry.terraform.io/providers/hashicorp/azurerm.' },
+          { token: 'data "azurerm_policy_set_definition"', type: 'keyword', note: 'Terraform `data` block — read-only lookup. `azurerm_policy_set_definition` is the azurerm provider\'s data source for finding built-in or custom initiatives. Docs: hashicorp/azurerm → data: azurerm_policy_set_definition.' },
+          { token: 'resource "azurerm_management_group_policy_assignment"', type: 'keyword', note: 'azurerm provider resource type for assigning a policy/initiative at a Management Group. Sibling resources: azurerm_subscription_policy_assignment, azurerm_resource_group_policy_assignment.' },
+          { token: 'policy_definition_id / management_group_id / display_name / enforce', type: 'keyword', note: 'Required/optional arguments on this resource type. Names are provider-defined; see the resource\'s docs page for the full list.' },
+          { token: '"Microsoft cloud security benchmark"', type: 'keyword', note: 'The exact display name of the built-in MCSB initiative as Microsoft publishes it. Match strings exactly — Terraform doesn\'t fuzzy-match.' },
+          { token: '"/providers/Microsoft.Management/managementGroups/workloads"', type: 'keyword', note: 'Azure resource-ID format for a Management Group. The `/providers/Microsoft.Management/managementGroups/` prefix is fixed; only the final segment (the MG name) is yours.' },
+          { token: 'data.azurerm_policy_set_definition.mcsb.id', type: 'keyword', note: 'Terraform reference into a data-source result. Syntax: `data.<type>.<local_name>.<attr>`. Type from provider; local name from your code.' },
+          { token: '"mcsb-workloads" / "MCSB - Workloads" / "mcsb" / "mcsb_at_workloads"', type: 'user', note: 'Your local names + display labels. Any identifiers — only used inside Terraform and in the Azure Portal.' },
+          { token: 'enforce = true', type: 'user', note: 'Your choice. `true` enforces the assignment (effects apply); `false` is the "audit-mode equivalent" — useful for testing.' },
+        ],
       },
     ],
     diagram: `Lifecycle:
@@ -2046,7 +2172,6 @@ resource "aws_organizations_policy_attachment" "to_workloads" {
 <li><strong>If you delete the attachment and re-apply:</strong> <code>terraform plan</code> shows <code># aws_organizations_policy_attachment.to_workloads will be destroyed</code>. After <code>apply</code>, the policy object still exists in AWS Organizations — but <strong>nothing is attached to it</strong>, so the deny no longer flows down to any account. The Workloads OU loses the region restriction immediately.</li>
 </ul>
 <p>This is the classic "policy exists but isn't attached" trap. When reviewing PRs, always check that a new <code>aws_organizations_policy</code> ships with a matching <code>_attachment</code> in the same module.</p>`,
-          starter: 'Attached at:\n\nIf I remove the attachment and re-apply:',
         },
         {
           label: 'Q2',
@@ -2070,7 +2195,6 @@ resource "azurerm_management_group_policy_assignment" "mcsb_at_workloads" {
 <li><strong>Use <code>data</code> when</strong> the object already exists and you only need its ID/attributes — built-ins, things owned by another team, things created out-of-band.</li>
 <li><strong>Use <code>resource</code> when</strong> you want Terraform to own the lifecycle (create, update, destroy).</li>
 </ul>`,
-          starter: '"data" means:\n\n"resource" means:\n\nI would use "data" when:\n\nI would use "resource" when:',
         },
       ],
       selfCheck: [
