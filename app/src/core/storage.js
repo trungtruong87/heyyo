@@ -98,6 +98,13 @@ export function deleteSnippet(id) {
 }
 export function clearSnippets() { storage.remove(SNIPPETS_KEY); }
 
+// Voice preferences for the Listen bar (speechSynthesis voice + rate).
+const VOICE_PREF_KEY = 'dsHub_voicePref';
+export function getVoicePref() {
+  return storage.getJSON(VOICE_PREF_KEY, { voiceName: null, rate: 1.0 });
+}
+export function setVoicePref(pref) { storage.setJSON(VOICE_PREF_KEY, pref); }
+
 // Explain-it-back: keyed by concept slug. The value is the user's own paragraph.
 export function getExplain(key) {
   const all = storage.getJSON(EXPLAIN_KEY, {});

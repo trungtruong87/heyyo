@@ -1059,36 +1059,200 @@
   a { color: inherit; text-decoration: none; }
 }
 
-/* ── Concept-dive worked-example table ─────────────────────────────────── */
+/* ── Concept dive — card, sections, callouts, table ────────────────────── */
+.fnd-concept {
+  border-left: 4px solid var(--purple);
+  background: linear-gradient(90deg,
+    color-mix(in srgb, var(--purple) 5%, transparent),
+    transparent 35%);
+}
 .fnd-concept-body { overflow-x: auto; }
 .fnd-concept-body table { min-width: 0; }
+
+.fnd-concept-body section.cd-section {
+  padding: 14px 0 4px;
+}
+.fnd-concept-body section.cd-section + section.cd-section {
+  border-top: 1px solid var(--border);
+  margin-top: 4px;
+}
+@media (max-width: 600px) {
+  .fnd-concept-body section.cd-section { padding: 10px 0 2px; }
+}
+
+.fnd-concept-body h3.cd-h {
+  font-size: 15.5px;
+  font-weight: 600;
+  letter-spacing: .005em;
+  color: var(--text);
+  margin: 0 0 6px;
+}
+.fnd-concept-body h3.cd-h .cd-h-tag {
+  display: inline-block;
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  color: var(--purple-dark);
+  margin-right: 8px;
+  vertical-align: 2px;
+}
+
+.fnd-concept-body p {
+  line-height: 1.65;
+  max-width: 72ch;
+  margin: 6px 0;
+}
+.fnd-concept-body ul,
+.fnd-concept-body ol {
+  margin: 6px 0 6px 18px;
+  padding: 0;
+  max-width: 72ch;
+}
+.fnd-concept-body li { margin: 4px 0; line-height: 1.6; }
+
+.fnd-concept-body pre {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 10px 12px;
+  overflow-x: auto;
+  font-size: 12.5px;
+  line-height: 1.5;
+  margin: 8px 0;
+}
+[data-theme="dark"] .fnd-concept-body pre { background: rgba(255,255,255,.04); }
+.fnd-concept-body code {
+  font-family: var(--mono);
+  font-size: 0.95em;
+  background: color-mix(in srgb, var(--text3) 12%, transparent);
+  padding: 1px 5px;
+  border-radius: 3px;
+}
+.fnd-concept-body pre code { background: transparent; padding: 0; }
+
+.cd-callout {
+  display: block;
+  border-left: 4px solid var(--amber);
+  background: linear-gradient(90deg,
+    color-mix(in srgb, var(--amber) 8%, transparent),
+    transparent 60%);
+  padding: 10px 14px;
+  border-radius: 0 6px 6px 0;
+  margin: 10px 0 4px;
+  max-width: 72ch;
+}
+.cd-callout .cd-callout-tag {
+  display: block;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: var(--amber-dark);
+  margin-bottom: 4px;
+}
+.cd-callout p { margin: 0; line-height: 1.55; }
+.cd-callout p + p { margin-top: 6px; }
+
 .fnd-cd-table {
   width: 100%;
   border-collapse: collapse;
   font-size: 13px;
   margin: 10px 0;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  overflow: hidden;
 }
 @media (max-width: 600px) {
   .fnd-cd-table { font-size: 12px; }
-  .fnd-cd-table th, .fnd-cd-table td { padding: 4px 5px; }
+  .fnd-cd-table th, .fnd-cd-table td { padding: 5px 7px; }
 }
 .fnd-cd-table th, .fnd-cd-table td {
   text-align: left;
-  padding: 6px 8px;
+  padding: 8px 12px;
   border-bottom: 1px solid color-mix(in srgb, var(--text3) 22%, transparent);
 }
+.fnd-cd-table tbody tr:nth-child(even) td {
+  background: color-mix(in srgb, var(--text3) 6%, transparent);
+}
+.fnd-cd-table tbody tr:last-child td { border-bottom: 0; }
 .fnd-cd-table thead th {
   font-size: 11px;
   letter-spacing: .04em;
   text-transform: uppercase;
   color: var(--text3);
+  background: color-mix(in srgb, var(--purple) 6%, transparent);
 }
 .fnd-cd-table code {
-  font-family: var(--font-mono, 'DM Mono', monospace);
+  font-family: var(--mono);
   font-size: 0.95em;
   background: color-mix(in srgb, var(--text3) 12%, transparent);
   padding: 1px 5px;
   border-radius: 3px;
+}
+
+/* ── Listen bar (Web Speech narration of Foundation pages) ─────────────── */
+.fnd-listen [hidden] { display: none !important; }
+.fnd-listen {
+  padding: 10px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.fnd-listen-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.fnd-listen-status {
+  font-size: 12.5px;
+  color: var(--text3);
+}
+.fnd-listen-details {
+  font-size: 13px;
+}
+.fnd-listen-details summary {
+  cursor: pointer;
+  color: var(--text3);
+  font-size: 12px;
+  padding: 2px 0;
+}
+.fnd-listen-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px dashed var(--border);
+}
+.fnd-listen-controls label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text2);
+}
+.fnd-listen-controls select,
+.fnd-listen-controls input[type="range"] {
+  font: inherit;
+  color: var(--text);
+}
+.fnd-listen-controls select {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 3px 6px;
+}
+[data-theme="dark"] .fnd-listen-controls select { background: rgba(255,255,255,.04); }
+.fnd-listen-controls input[type="range"] { width: 120px; }
+.fnd-listen-active {
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--green) 35%, transparent);
+  transition: box-shadow .2s ease;
+}
+@media (max-width: 600px) {
+  .fnd-listen-controls { gap: 8px; }
+  .fnd-listen-controls input[type="range"] { width: 100px; }
 }
 
 /* ── Field notes (foundation days) ─────────────────────────────────────── */

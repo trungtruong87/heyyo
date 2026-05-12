@@ -3,7 +3,8 @@
 
 import { html, $, badge, escapeHtml, copyToClipboard } from '../../core/ui.js';
 import { FOUNDATIONS, foundationById } from '../../data/foundations.js';
-import { getFndDone, setFndDone, getExplain, setExplain } from '../../core/storage.js';
+import { getFndDone, setFndDone, getExplain, setExplain, getVoicePref, setVoicePref } from '../../core/storage.js';
+import { extractListenable, getVoices, pickDefaultVoice, play, cancelAll } from '../../core/voice.js';
 
 function cloudClass(cloud) {
   return cloud === 'aws' ? 'aws' :
@@ -130,7 +131,25 @@ export function renderFoundation(id) {
         <p>${escapeHtml(f.subtitle)}</p>
       </div>
 
-      <div class="card fnd-intro">
+      <div class="card fnd-listen" data-listen-root>
+        <div class="fnd-listen-row">
+          <button class="btn btn-green" data-action="listen-play">▶ Listen</button>
+          <button class="btn" data-action="listen-pause" hidden>⏸ Pause</button>
+          <button class="btn" data-action="listen-resume" hidden>▶ Resume</button>
+          <button class="btn" data-action="listen-stop" hidden>■ Stop</button>
+          <span class="fnd-listen-status" data-listen-status>Reads the plain-English layers aloud — code &amp; tables skipped.</span>
+        </div>
+        <details class="fnd-listen-details">
+          <summary>Voice settings</summary>
+          <div class="fnd-listen-controls">
+            <label>Voice <select data-listen-voice></select></label>
+            <label>Speed <input type="range" min="0.85" max="1.5" step="0.05" data-listen-rate></label>
+            <span data-listen-rate-val>1.0×</span>
+          </div>
+        </details>
+      </div>
+
+      <div class="card fnd-intro" data-listen-card="intro">
         <span class="layer-label">Plain-English (read aloud test)</span>
         <p class="fnd-plain-text">${f.intro.plain}</p>
         <div class="fnd-mnemonic">🧠 <strong>Remember:</strong> ${escapeHtml(f.intro.mnemonic)}</div>
@@ -147,7 +166,7 @@ export function renderFoundation(id) {
         </div>` : ''}
 
       ${f.conceptDive ? `
-        <div class="card fnd-concept">
+        <div class="card fnd-concept" data-listen-card="concept">
           <span class="layer-label">Concept dive — ${escapeHtml(f.conceptDive.title)}</span>
           <div class="fnd-concept-body">${f.conceptDive.body}</div>
         </div>` : ''}
@@ -161,12 +180,12 @@ export function renderFoundation(id) {
 
       ${renderHandsOnCard(f)}
 
-      <div class="card fnd-recap">
+      <div class="card fnd-recap" data-listen-card="recap">
         <h2>📌 Recap — what you should now believe</h2>
         <ul>${f.recap.map(r => `<li>${r}</li>`).join('')}</ul>
       </div>
 
-      <div class="card fnd-talking">
+      <div class="card fnd-talking" data-listen-card="talking">
         <h2>🗣️ Meeting talking points</h2>
         <p class="hint">Phrases you could actually say in a standup or to an auditor.</p>
         <ol>${f.talkingPoints.map(t => `<li>${t}</li>`).join('')}</ol>
@@ -192,16 +211,22 @@ export function mountFoundation(root, id) {
   const f = foundationById(id);
   if (!f) return;
 
+  // Stop any narration left running from a previous foundation page.
+  cancelAll();
+
   // Toggle done
   root.querySelector('[data-action="toggle-done"]')?.addEventListener('click', () => {
     const done = getFndDone();
     if (done.has(f.id)) done.delete(f.id); else done.add(f.id);
     setFndDone(done);
     // Re-render in place
+    cancelAll();
     const main = root.closest('main') || document.getElementById('app-root');
     if (main) main.innerHTML = renderFoundation(f.id);
     if (main) mountFoundation(main, f.id);
   });
+
+  mountListenBar(root, f);
 
   // Hands-on: delegated click handlers for hint/answer/copy
   const handsonRoot = root.querySelector('.fnd-handson');
@@ -249,4 +274,134 @@ export function mountFoundation(root, id) {
       setExplain('handson_' + f.id + '_check_' + cb.dataset.checkIdx, cb.checked ? '1' : '');
     });
   }
+}
+
+// ─── Listen bar ──────────────────────────────────────────────────────────
+// Wires the play/pause/stop buttons, voice picker, and rate slider.
+// Highlights the card that's currently being narrated.
+
+let activeController = null;
+
+function mountListenBar(root, f) {
+  const bar = root.querySelector('[data-listen-root]');
+  if (!bar) return;
+  if (!('speechSynthesis' in window)) {
+    bar.querySelector('[data-listen-status]').textContent =
+      'Your browser does not support speech synthesis.';
+    bar.querySelector('[data-action="listen-play"]').disabled = true;
+    return;
+  }
+
+  const btnPlay   = bar.querySelector('[data-action="listen-play"]');
+  const btnPause  = bar.querySelector('[data-action="listen-pause"]');
+  const btnResume = bar.querySelector('[data-action="listen-resume"]');
+  const btnStop   = bar.querySelector('[data-action="listen-stop"]');
+  const statusEl  = bar.querySelector('[data-listen-status]');
+  const voiceSel  = bar.querySelector('[data-listen-voice]');
+  const rateInput = bar.querySelector('[data-listen-rate]');
+  const rateVal   = bar.querySelector('[data-listen-rate-val]');
+
+  const pref = getVoicePref();
+  rateInput.value = String(pref.rate || 1.0);
+  rateVal.textContent = Number(rateInput.value).toFixed(2).replace(/\.?0+$/, '') + '×';
+
+  let voicesLoaded = [];
+  let currentVoice = null;
+
+  getVoices().then(voices => {
+    voicesLoaded = voices;
+    // Populate the dropdown with English voices first, others below.
+    const en = voices.filter(v => /^en[-_]/i.test(v.lang));
+    const rest = voices.filter(v => !/^en[-_]/i.test(v.lang));
+    voiceSel.innerHTML =
+      [...en, ...rest]
+        .map(v => `<option value="${escapeHtml(v.name)}">${escapeHtml(v.name)} — ${escapeHtml(v.lang)}</option>`)
+        .join('');
+    const saved = pref.voiceName && voices.find(v => v.name === pref.voiceName);
+    currentVoice = saved || pickDefaultVoice(voices);
+    if (currentVoice) voiceSel.value = currentVoice.name;
+    if (!voices.length) {
+      statusEl.textContent = 'No voices available — speech synthesis disabled.';
+      btnPlay.disabled = true;
+    }
+  });
+
+  voiceSel.addEventListener('change', () => {
+    currentVoice = voicesLoaded.find(v => v.name === voiceSel.value) || currentVoice;
+    setVoicePref({ voiceName: voiceSel.value, rate: Number(rateInput.value) });
+  });
+
+  rateInput.addEventListener('input', () => {
+    const r = Number(rateInput.value);
+    rateVal.textContent = r.toFixed(2).replace(/\.?0+$/, '') + '×';
+    setVoicePref({ voiceName: voiceSel.value || null, rate: r });
+  });
+
+  function setPlaying(state) {
+    // state: 'idle' | 'playing' | 'paused'
+    btnPlay.hidden   = state !== 'idle';
+    btnPause.hidden  = state !== 'playing';
+    btnResume.hidden = state !== 'paused';
+    btnStop.hidden   = state === 'idle';
+  }
+
+  function clearHighlights() {
+    root.querySelectorAll('[data-listen-card]').forEach(el => el.classList.remove('fnd-listen-active'));
+  }
+
+  btnPlay.addEventListener('click', () => {
+    const queue = extractListenable(f);
+    if (!queue.length) {
+      statusEl.textContent = 'Nothing to read on this page.';
+      return;
+    }
+    if (activeController) activeController.stop();
+    activeController = play(queue, {
+      voice: currentVoice,
+      rate: Number(rateInput.value) || 1.0,
+      onChunk: (i, chunk) => {
+        statusEl.textContent = `Reading: ${chunk.label} (${i + 1}/${queue.length})`;
+        clearHighlights();
+        const card = root.querySelector(`[data-listen-card="${chunk.cardKey}"]`);
+        if (card) card.classList.add('fnd-listen-active');
+      },
+      onEnd: () => {
+        statusEl.textContent = 'Done.';
+        clearHighlights();
+        setPlaying('idle');
+      },
+    });
+    setPlaying('playing');
+  });
+
+  btnPause.addEventListener('click', () => {
+    if (!activeController) return;
+    activeController.pause();
+    setPlaying('paused');
+    statusEl.textContent = statusEl.textContent.replace('Reading:', 'Paused:');
+  });
+
+  btnResume.addEventListener('click', () => {
+    if (!activeController) return;
+    activeController.resume();
+    setPlaying('playing');
+    statusEl.textContent = statusEl.textContent.replace('Paused:', 'Reading:');
+  });
+
+  btnStop.addEventListener('click', () => {
+    if (activeController) { activeController.stop(); activeController = null; }
+    clearHighlights();
+    statusEl.textContent = 'Stopped.';
+    setPlaying('idle');
+  });
+}
+
+// Global hashchange guard: if the user navigates away from a Foundation
+// page mid-narration, kill the voice immediately.
+if (typeof window !== 'undefined' && !window.__fndVoiceHookInstalled) {
+  window.__fndVoiceHookInstalled = true;
+  window.addEventListener('hashchange', () => {
+    cancelAll();
+    if (activeController) { activeController.stop(); activeController = null; }
+  });
 }

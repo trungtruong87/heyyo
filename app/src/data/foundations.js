@@ -103,54 +103,68 @@ Tenant Root
     conceptDive: {
       title: 'Inheritance & blast radius — by worked example',
       body: `
-        <p><strong>The rule in one sentence.</strong> Every action runs through one checkpoint per
-        node on its path from the root down to its account. <strong>Any single checkpoint can deny.
-        None can override another's deny.</strong> That's the whole inheritance model.</p>
+        <section class="cd-section">
+          <h3 class="cd-h">The rule in one sentence</h3>
+          <p>Every action runs through one checkpoint per node on its path from the root down to its
+          account. <strong>Any single checkpoint can deny. None can override another's deny.</strong>
+          That's the whole inheritance model.</p>
+        </section>
 
-        <p><strong>Worked example 1 — stacking is intersection, not union.</strong></p>
-        <p>Org tree:</p>
-        <pre><code>Root
+        <section class="cd-section">
+          <h3 class="cd-h"><span class="cd-h-tag">Worked example 1</span>Stacking is intersection, not union</h3>
+          <p>Org tree:</p>
+          <pre><code>Root
 └── Workloads OU      ← SCP A: deny  s3:DeleteBucket
     └── Prod OU        ← SCP B: deny  s3:PutBucketPolicy
         └── prod-001  ← (no SCP of its own)</code></pre>
-        <p>A user in <code>prod-001</code> calls four S3 actions. What happens to each?</p>
-        <table class="fnd-cd-table">
-          <thead><tr><th>Action</th><th>Root</th><th>Workloads OU</th><th>Prod OU</th><th>Outcome</th></tr></thead>
-          <tbody>
-            <tr><td><code>s3:GetObject</code></td>      <td>—</td><td>—</td><td>—</td><td><strong>allowed</strong> (no deny on path)</td></tr>
-            <tr><td><code>s3:PutObject</code></td>      <td>—</td><td>—</td><td>—</td><td><strong>allowed</strong></td></tr>
-            <tr><td><code>s3:DeleteBucket</code></td>   <td>—</td><td><strong>DENY</strong></td><td>—</td><td><strong>denied</strong> by SCP A</td></tr>
-            <tr><td><code>s3:PutBucketPolicy</code></td><td>—</td><td>—</td><td><strong>DENY</strong></td><td><strong>denied</strong> by SCP B</td></tr>
-          </tbody>
-        </table>
-        <p>Notice: <strong>both</strong> denies apply at <code>prod-001</code>, even though they sit at
-        different levels. The deeper account experiences the <strong>intersection</strong> of every
-        ancestor's restrictions. Add a third SCP at the account level and a fourth would
-        stack on top.</p>
+          <p>A user in <code>prod-001</code> calls four S3 actions. What happens to each?</p>
+          <table class="fnd-cd-table">
+            <thead><tr><th>Action</th><th>Root</th><th>Workloads OU</th><th>Prod OU</th><th>Outcome</th></tr></thead>
+            <tbody>
+              <tr><td><code>s3:GetObject</code></td>      <td>—</td><td>—</td><td>—</td><td><strong>allowed</strong> (no deny on path)</td></tr>
+              <tr><td><code>s3:PutObject</code></td>      <td>—</td><td>—</td><td>—</td><td><strong>allowed</strong></td></tr>
+              <tr><td><code>s3:DeleteBucket</code></td>   <td>—</td><td><strong>DENY</strong></td><td>—</td><td><strong>denied</strong> by SCP A</td></tr>
+              <tr><td><code>s3:PutBucketPolicy</code></td><td>—</td><td>—</td><td><strong>DENY</strong></td><td><strong>denied</strong> by SCP B</td></tr>
+            </tbody>
+          </table>
+          <p>Notice: <strong>both</strong> denies apply at <code>prod-001</code>, even though they sit at
+          different levels. The deeper account experiences the <strong>intersection</strong> of every
+          ancestor's restrictions. Add a third SCP at the account level and a fourth would stack on top.</p>
+        </section>
 
-        <p><strong>Worked example 2 — the "more specific wins" trap.</strong></p>
-        <p>A junior engineer reads SCP A and thinks: <em>"I'll just attach an SCP at <code>prod-001</code>
-        that explicitly allows <code>s3:DeleteBucket</code> — the more specific rule wins."</em>
-        Then they're surprised when the action still fails.</p>
-        <p>Here's why. SCPs are <strong>restrictions</strong>, not grants. An "allow" SCP doesn't
-        <em>grant</em> permission; at best it <em>refrains from denying</em>. The Workloads OU's
-        deny is still on the path. Both checkpoints fire. Workloads OU says no. <strong>End of
-        story</strong> — IAM never even gets a vote.</p>
-        <p class="fnd-concept-callout"><strong>Common trap (worth tattooing):</strong>
-        "Most specific rule wins" works in CSS, IAM permissions, file ACLs.
-        <strong>It does NOT work in SCPs or Azure Policy.</strong> Restrictions <em>stack</em>; they
-        do not override. A child can only <em>add</em> denies, never remove a parent's.</p>
+        <section class="cd-section">
+          <h3 class="cd-h"><span class="cd-h-tag">Worked example 2</span>The "more specific wins" trap</h3>
+          <p>A junior engineer reads SCP A and thinks: <em>"I'll just attach an SCP at <code>prod-001</code>
+          that explicitly allows <code>s3:DeleteBucket</code> — the more specific rule wins."</em>
+          Then they're surprised when the action still fails.</p>
+          <p>Here's why. SCPs are <strong>restrictions</strong>, not grants. An "allow" SCP doesn't
+          <em>grant</em> permission; at best it <em>refrains from denying</em>. The Workloads OU's
+          deny is still on the path. Both checkpoints fire. Workloads OU says no. <strong>End of
+          story</strong> — IAM never even gets a vote.</p>
+          <aside class="cd-callout">
+            <strong class="cd-callout-tag">⚠ Common trap — worth tattooing</strong>
+            <p>"Most specific rule wins" works in CSS, IAM permissions, file ACLs.
+            <strong>It does NOT work in SCPs or Azure Policy.</strong> Restrictions <em>stack</em>; they
+            do not override. A child can only <em>add</em> denies, never remove a parent's.</p>
+          </aside>
+        </section>
 
-        <p><strong>So what is "blast radius"?</strong></p>
-        <p>It's the answer to: <em>"Which accounts does this checkpoint cover?"</em></p>
-        <ul>
-          <li>Attach at <strong>Root</strong> → covers every account in the org. Biggest blast radius. Use for things that must be true everywhere (deny disabling CloudTrail, deny IAM users).</li>
-          <li>Attach at an <strong>OU/MG</strong> → covers everything in that sub-tree only. Medium. Use for environment-specific rules (Prod stricter than Dev).</li>
-          <li>Attach at a <strong>single account/sub</strong> → covers just that one. Tiny. Use sparingly — usually a smell that the rule belongs higher.</li>
-        </ul>
-        <p><strong>Reviewer's question</strong> for any new guardrail PR: "What is the blast
-        radius, and is that the smallest scope that still works?" Smaller blast radius = fewer
-        surprise breakages, but also more places you might forget to attach it.</p>`,
+        <section class="cd-section">
+          <h3 class="cd-h">So what is "blast radius"?</h3>
+          <p>It's the answer to: <em>"Which accounts does this checkpoint cover?"</em></p>
+          <ul>
+            <li>Attach at <strong>Root</strong> → covers every account in the org. Biggest blast radius. Use for things that must be true everywhere (deny disabling CloudTrail, deny IAM users).</li>
+            <li>Attach at an <strong>OU/MG</strong> → covers everything in that sub-tree only. Medium. Use for environment-specific rules (Prod stricter than Dev).</li>
+            <li>Attach at a <strong>single account/sub</strong> → covers just that one. Tiny. Use sparingly — usually a smell that the rule belongs higher.</li>
+          </ul>
+        </section>
+
+        <section class="cd-section">
+          <h3 class="cd-h">Reviewer's question for any new guardrail PR</h3>
+          <p>"What is the blast radius, and is that the smallest scope that still works?"
+          Smaller blast radius = fewer surprise breakages, but also more places you might
+          forget to attach it.</p>
+        </section>`,
     },
     fieldNotes: [
       'The Tenant Root management group is <b>invisible by default</b>. Turn it on once: <i>Entra ID → Properties → Access management for Azure resources → "Yes"</i>. Without it, policies at "the top" silently apply only at sub level.',
@@ -310,26 +324,38 @@ A user in <code>prod-001</code> tries to <code>iam:CreateUser</code> in <code>us
     conceptDive: {
       title: 'SCP + IAM — two checkpoint lines, same picture as the org tree',
       body: `
-        <p><strong>Same checkpoint model as the org tree, with one twist.</strong> The org tree
-        stacked checkpoints <em>vertically</em> down Root → OU → account. Today's twist: at the
-        account itself, the action has to clear <strong>two parallel checkpoint lines</strong>
-        before it runs.</p>
-        <ul>
-          <li><strong>The SCP line</strong> — the checkpoints inherited down the OU tree. "Is this action even
-          allowed in this account?" These are guardrails; they grant nothing.</li>
-          <li><strong>The IAM line</strong> — the user/role's own policies. "Is <em>this person</em> allowed
-          to do this thing?" These grant specific permissions.</li>
-        </ul>
-        <p><strong>Both lines must say "yes". Either can say "no".</strong> An IAM policy granting <code>ec2:*</code>
-        cannot un-deny an SCP block, and an SCP allowing everything doesn't grant anything to a user who has no
-        IAM permission. The picture is the same as the org tree — stacked gates, none can override another — just
-        applied at a different layer.</p>
-        <p class="fnd-concept-callout"><strong>If you take only one thing from this page:</strong> when a call fails
-        with <code>AccessDenied</code>, ask "which checkpoint blocked it?" The error annotation tells you: an
-        explicit deny in an SCP, an implicit deny because no IAM policy granted it, or a Resource policy that
-        doesn't trust the caller.</p>
-        <p>On Azure the same picture: Azure Policy at the MG/sub level is the inherited checkpoint line; Azure
-        RBAC is the per-principal line. Both must clear.</p>`,
+        <section class="cd-section">
+          <h3 class="cd-h">Two parallel checkpoint lines at the account</h3>
+          <p>Same checkpoint model as the org tree, with one twist. The org tree stacked checkpoints
+          <em>vertically</em> down Root → OU → account. Today's twist: at the account itself, the
+          action has to clear <strong>two parallel checkpoint lines</strong> before it runs.</p>
+          <ul>
+            <li><strong>The SCP line</strong> — the checkpoints inherited down the OU tree. "Is this action even
+            allowed in this account?" These are guardrails; they grant nothing.</li>
+            <li><strong>The IAM line</strong> — the user/role's own policies. "Is <em>this person</em> allowed
+            to do this thing?" These grant specific permissions.</li>
+          </ul>
+        </section>
+
+        <section class="cd-section">
+          <h3 class="cd-h">Both lines must say "yes". Either can say "no"</h3>
+          <p>An IAM policy granting <code>ec2:*</code> cannot un-deny an SCP block, and an SCP allowing
+          everything doesn't grant anything to a user who has no IAM permission. The picture is the
+          same as the org tree — stacked gates, none can override another — just applied at a
+          different layer.</p>
+          <aside class="cd-callout">
+            <strong class="cd-callout-tag">⚑ Tattoo this</strong>
+            <p>When a call fails with <code>AccessDenied</code>, ask "which checkpoint blocked it?"
+            The error annotation tells you: an explicit deny in an SCP, an implicit deny because no
+            IAM policy granted it, or a Resource policy that doesn't trust the caller.</p>
+          </aside>
+        </section>
+
+        <section class="cd-section">
+          <h3 class="cd-h">Same picture on Azure</h3>
+          <p>Azure Policy at the MG/sub level is the inherited checkpoint line; Azure RBAC is the
+          per-principal line. Both must clear.</p>
+        </section>`,
     },
     fieldNotes: [
       '<b>SCPs do NOT restrict the management account.</b> If an SCP "isn\'t working," check who the principal is — admins in the management account skip the gate. This is by design (break-glass).',
@@ -1340,34 +1366,44 @@ Resources
     conceptDive: {
       title: 'Where does KQL run? Log Analytics vs Resource Graph',
       body: `
-        <p><strong>You will hit two KQL surfaces</strong> — they speak the same
-        language but cover different data:</p>
-        <ul>
-          <li><strong>Log Analytics workspaces (LA)</strong> — for <em>logs and time-series</em> ingested
-          via the Azure Monitor Agent or Diagnostic Settings. Queries lean on
-          <code>TimeGenerated</code>. Used by Sentinel, Defender for Cloud alerts,
-          App Insights, custom app logs.</li>
-          <li><strong>Azure Resource Graph (ARG)</strong> — for the <em>live inventory snapshot</em> of every
-          resource across every subscription you have RBAC on. <b>No time
-          dimension, no ingestion lag.</b> Used by Defender for Cloud Inventory,
-          Azure Policy compliance views, the Resource Graph Explorer blade.</li>
-        </ul>
+        <section class="cd-section">
+          <h3 class="cd-h">Two KQL surfaces — same language, different data</h3>
+          <p>You will hit two KQL surfaces — they speak the same language but cover different data:</p>
+          <ul>
+            <li><strong>Log Analytics workspaces (LA)</strong> — for <em>logs and time-series</em> ingested
+            via the Azure Monitor Agent or Diagnostic Settings. Queries lean on
+            <code>TimeGenerated</code>. Used by Sentinel, Defender for Cloud alerts,
+            App Insights, custom app logs.</li>
+            <li><strong>Azure Resource Graph (ARG)</strong> — for the <em>live inventory snapshot</em> of every
+            resource across every subscription you have RBAC on. <b>No time
+            dimension, no ingestion lag.</b> Used by Defender for Cloud Inventory,
+            Azure Policy compliance views, the Resource Graph Explorer blade.</li>
+          </ul>
+        </section>
 
-        <p><strong>Decision rule (memorize)</strong>:</p>
-        <div class="callout">
-          Time-series / historical / log lines &nbsp;→ <strong>Log Analytics</strong>.<br>
-          "What exists right now and where" &nbsp;→ <strong>Resource Graph</strong>.
-        </div>
+        <section class="cd-section">
+          <h3 class="cd-h">Decision rule — memorize this</h3>
+          <aside class="cd-callout">
+            <strong class="cd-callout-tag">★ Key rule</strong>
+            <p>Time-series / historical / log lines &nbsp;→ <strong>Log Analytics</strong>.</p>
+            <p>"What exists right now and where" &nbsp;→ <strong>Resource Graph</strong>.</p>
+          </aside>
+        </section>
 
-        <p><strong>Gotchas that bite KQL newcomers</strong>:</p>
-        <ul>
-          <li><b>ARG KQL ≠ Log Analytics KQL.</b> You can\'t join an ARG query to a Log Analytics workspace. Different engines. The operator subset is similar but not identical.</li>
-          <li><code>arg_max(TimeGenerated, *)</code> only works in Log Analytics — ARG has no time dimension.</li>
-          <li>Operator <code>=~</code> is case-insensitive equals. Use it on type names and tag names by default.</li>
-          <li>For ARG dive deeper in <i>Inventory & Query → Azure Resource Graph</i>.</li>
-        </ul>
+        <section class="cd-section">
+          <h3 class="cd-h">Gotchas that bite KQL newcomers</h3>
+          <ul>
+            <li><b>ARG KQL ≠ Log Analytics KQL.</b> You can\'t join an ARG query to a Log Analytics workspace. Different engines. The operator subset is similar but not identical.</li>
+            <li><code>arg_max(TimeGenerated, *)</code> only works in Log Analytics — ARG has no time dimension.</li>
+            <li>Operator <code>=~</code> is case-insensitive equals. Use it on type names and tag names by default.</li>
+            <li>For ARG dive deeper in <i>Inventory & Query → Azure Resource Graph</i>.</li>
+          </ul>
+        </section>
 
-        <p>Open <strong>Lab Bench → KQL playground</strong> to try the operators against three sample tables.</p>`,
+        <section class="cd-section">
+          <h3 class="cd-h">Try it</h3>
+          <p>Open <strong>Lab Bench → KQL playground</strong> to try the operators against three sample tables.</p>
+        </section>`,
     },
     fieldNotes: [
       '<b>For org-wide audit questions, Resource Graph + KQL beats clicking through the portal</b> every time. Save the query, pin it to a dashboard, screenshot the result with a date stamp. That\'s evidence.',
