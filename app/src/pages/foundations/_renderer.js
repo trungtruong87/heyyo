@@ -96,8 +96,8 @@ function panelHtml(p) {
 function exampleAnnotationsHtml(anns) {
   if (!Array.isArray(anns) || !anns.length) return '';
   return `
-    <div class="fnd-example-annotations">
-      <span class="layer-label">What's what</span>
+    <details class="fnd-example-annotations">
+      <summary class="layer-label">What's what (${anns.length})</summary>
       <ul>
         ${anns.map(a => `
           <li class="ann-${a.type === 'keyword' ? 'keyword' : 'user'}">
@@ -106,7 +106,7 @@ function exampleAnnotationsHtml(anns) {
             <span class="ann-note">${escapeHtml(a.note)}</span>
           </li>`).join('')}
       </ul>
-    </div>`;
+    </details>`;
 }
 
 function labLinkHtml(l) {
