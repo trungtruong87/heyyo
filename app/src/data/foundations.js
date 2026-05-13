@@ -26,6 +26,7 @@ export const FOUNDATIONS = [
     title: 'Org structure & checkpoints',
     subtitle: 'AWS Organizations + OUs ↔ Azure Management Groups + Subscriptions',
     cloud: 'both',
+    collapsedPanels: true,
     intro: {
       plain: `Big companies have hundreds or thousands of cloud accounts. You can't
               govern them one at a time. So both AWS and Azure let you build a TREE:
@@ -262,6 +263,7 @@ A user in <code>prod-001</code> tries to <code>iam:CreateUser</code> in <code>us
     title: 'Service Control Policies (SCPs)',
     subtitle: 'Org-level deny guardrails — what an AWS account is even allowed to do',
     cloud: 'aws',
+    collapsedPanels: true,
     intro: {
       plain: `SCPs are rules that say "you literally cannot do X here," attached
               to an OU or account. Even an admin can't bypass them. They live
@@ -503,6 +505,7 @@ A user in <code>prod-001</code> tries to <code>iam:CreateUser</code> in <code>us
     title: 'AWS Config & Config Rules',
     subtitle: 'Detective controls — watch for what slipped past the SCP guardrails',
     cloud: 'aws',
+    collapsedPanels: true,
     intro: {
       plain: `SCPs BLOCK bad things at the gate. AWS Config WATCHES for bad
               things — the stuff created before the SCP existed, the stuff a
@@ -721,6 +724,7 @@ mainSteps:
     title: 'Control Tower & Landing Zones',
     subtitle: 'How AWS automates building and governing a multi-account environment',
     cloud: 'aws',
+    collapsedPanels: true,
     intro: {
       plain: `When a new team needs cloud, you don't hand them a blank account
               and hope. You hand them a pre-configured shell — the right OU,
@@ -958,6 +962,7 @@ resource "aws_organizations_tag" "owner" {
     title: 'Azure Policy',
     subtitle: 'Azure\'s guardrail layer — six effects, definition vs assignment, exemptions',
     cloud: 'azure',
+    collapsedPanels: true,
     intro: {
       plain: `Azure Policy is broader than an AWS SCP. It can DENY (like SCP), but
               it can also AUDIT (record non-compliance), MODIFY (auto-fix tags),
@@ -1128,6 +1133,7 @@ Identify (a) the <em>field</em> being checked (the one that does the actual work
     title: 'Azure Policy: anatomy',
     subtitle: 'The JSON skeleton — once you read the shape, you can read any policy',
     cloud: 'azure',
+    collapsedPanels: true,
     intro: {
       plain: `Every Azure Policy is one JSON object with the same skeleton.
               <code>properties</code> wraps everything. Inside that,
@@ -1436,6 +1442,7 @@ Identify (a) the <em>field</em> being checked (the one that does the actual work
     title: 'Microsoft Cloud Security Benchmark (MCSB)',
     subtitle: 'Azure\'s built-in security baseline — ~250 policies bundled as one initiative',
     cloud: 'azure',
+    collapsedPanels: true,
     intro: {
       plain: `MCSB is Microsoft\'s baseline of "what should be checked" — a
               curated bundle of ~250 Azure Policies aligned to NIST and CIS.
@@ -1618,6 +1625,7 @@ Identify (a) the <em>field</em> being checked (the one that does the actual work
     title: 'Azure Automation Runbooks + Az PowerShell',
     subtitle: 'Runbooks for scheduled compliance loops; standalone Az.* scripts for everything else',
     cloud: 'azure',
+    collapsedPanels: true,
     intro: {
       plain: `An Automation Runbook is a script (PowerShell or Python) that
               Azure runs for you on a schedule or on demand. Think "cron job
@@ -1870,6 +1878,7 @@ Now every sub the identity can read is queried.</li>
     title: 'KQL (Kusto Query Language)',
     subtitle: 'Microsoft\'s read-only query language — SQL with Unix pipes',
     cloud: 'azure',
+    collapsedPanels: true,
     intro: {
       plain: `KQL is Microsoft\'s read-only query language. You\'ll meet it
               everywhere on Azure: Defender for Cloud, Sentinel, Log
@@ -2062,6 +2071,7 @@ Resources
     title: 'Azure Resource Graph',
     subtitle: 'Read-only query layer over your entire tenant\'s inventory',
     cloud: 'azure',
+    collapsedPanels: true,
     intro: {
       plain: `Azure Resource Graph (ARG) is a read-only query layer over your
               entire tenant\'s inventory. KQL is the language. You\'ll use it
@@ -2210,6 +2220,7 @@ PolicyResources
     title: 'Microsoft Defender for Cloud',
     subtitle: 'Azure\'s posture dashboard — secure score, recommendations, regulatory compliance',
     cloud: 'azure',
+    collapsedPanels: true,
     intro: {
       plain: `Defender for Cloud (MDC) is the central security dashboard for
               Azure (and connected AWS/GCP/on-prem). It aggregates findings
@@ -2342,6 +2353,7 @@ PolicyResources
     title: 'Microsoft Defender for Endpoint (MDE)',
     subtitle: 'EDR on every server / VM / device — the on-host responder',
     cloud: 'azure',
+    collapsedPanels: true,
     intro: {
       plain: `MDE is an EDR — Endpoint Detection and Response. Think of it as
               the security agent that lives <em>on each VM</em>, watching for
@@ -2469,6 +2481,7 @@ PolicyResources
     title: 'Terraform fundamentals',
     subtitle: 'Just enough HCL + state + modules to read what your team writes',
     cloud: 'tf',
+    collapsedPanels: true,
     intro: {
       plain: `Terraform is how compliance teams declare cloud configuration as
               code. Instead of clicking in a console, you write a text file

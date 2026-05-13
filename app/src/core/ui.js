@@ -48,6 +48,68 @@ export function escapeHtml(s) {
   }[c]));
 }
 
+// Highlight a code example by wrapping the tokens listed in `annotations` with
+// colored spans. Reuses the curated token list the data author already wrote
+// for the "What's what" section — no syntax parser, no language detection,
+// no dependency. Two colors: platform keywords vs your values.
+//
+//   text         the raw code example string
+//   annotations  array of { token, type: 'keyword' | 'user', note }
+//
+// Returns escaped HTML with <span class="tok-keyword|tok-user"> wrappers
+// around each non-overlapping match. Longest tokens win on conflict so
+// "NotAction" wraps before the substring "Action" does.
+export function highlightExampleHtml(text, annotations) {
+  if (text == null) return '';
+  if (!Array.isArray(annotations) || !annotations.length) return escapeHtml(text);
+
+  // Tokens can be a slash-separated list ("X / Y / Z") meaning "annotate each
+  // of these the same way." Split on " / " and treat each variant individually.
+  const expanded = [];
+  for (const ann of annotations) {
+    if (!ann || !ann.token) continue;
+    const parts = String(ann.token).split(/\s*\/\s*/).filter(Boolean);
+    for (const t of parts) expanded.push({ token: t, type: ann.type });
+  }
+
+  // Longest-first to avoid shorter tokens winning conflicts. Find all matches,
+  // claim non-overlapping ranges, then walk the text emitting segments.
+  expanded.sort((a, b) => b.token.length - a.token.length);
+
+  const ranges = []; // { start, end, type }
+  const claimed = []; // [start, end] sorted by start, non-overlapping
+
+  function overlapsClaimed(s, e) {
+    for (const [cs, ce] of claimed) if (s < ce && e > cs) return true;
+    return false;
+  }
+
+  for (const { token, type } of expanded) {
+    let i = 0;
+    while ((i = text.indexOf(token, i)) !== -1) {
+      const end = i + token.length;
+      if (!overlapsClaimed(i, end)) {
+        claimed.push([i, end]);
+        ranges.push({ start: i, end, type: type === 'keyword' ? 'keyword' : 'user' });
+      }
+      i = end;
+    }
+  }
+
+  ranges.sort((a, b) => a.start - b.start);
+
+  let html = '';
+  let cursor = 0;
+  for (const r of ranges) {
+    if (cursor < r.start) html += escapeHtml(text.slice(cursor, r.start));
+    const cls = r.type === 'keyword' ? 'tok-keyword' : 'tok-user';
+    html += `<span class="${cls}">${escapeHtml(text.slice(r.start, r.end))}</span>`;
+    cursor = r.end;
+  }
+  if (cursor < text.length) html += escapeHtml(text.slice(cursor));
+  return html;
+}
+
 // Shuffle in-place (Fisher-Yates).
 export function shuffle(arr) {
   for (let i = arr.length - 1; i > 0; i--) {

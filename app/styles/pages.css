@@ -544,9 +544,69 @@
   padding: 10px 12px;
   overflow-x: auto;
   font-size: 12.5px;
-  line-height: 1.5;
+  line-height: 1.55;
+  /* Soft-wrap long lines (URLs, ARNs, role IDs) instead of horizontal scroll.
+     `pre-wrap` keeps existing line breaks + indentation; `overflow-wrap: anywhere`
+     allows wrapping inside unbroken strings only when necessary. */
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: normal;
+  tab-size: 2;
 }
 [data-theme="dark"] .fnd-panel .fnd-example pre { background: rgba(255,255,255,.04); }
+
+/* Token colors for highlightExampleHtml() — reuses the curated exampleAnnotations
+   list. Two-color scheme: platform keywords vs your-choice values. Picked to
+   work on both light and dark backgrounds without clashing with cloud colors. */
+.fnd-panel .fnd-code .tok-keyword {
+  color: #6366f1;          /* indigo — "platform keyword" */
+  font-weight: 600;
+}
+.fnd-panel .fnd-code .tok-user {
+  color: #d97706;          /* amber — "your value / choice" */
+  font-weight: 600;
+}
+[data-theme="dark"] .fnd-panel .fnd-code .tok-keyword { color: #a5b4fc; }
+[data-theme="dark"] .fnd-panel .fnd-code .tok-user    { color: #fbbf24; }
+
+/* ── Collapsible-panel prototype (topic flag `collapsedPanels: true`) ── */
+/* First panel lands open; the rest collapse until clicked. Reduces wall-of-text. */
+.fnd-panels.fnd-panels-collapsible {
+  display: block;
+  grid-template-columns: none;
+}
+.fnd-panels-collapsible .fnd-panel { margin: 12px 0; }
+details.fnd-panel-collapsible { padding: 0; }
+details.fnd-panel-collapsible > summary {
+  list-style: none;
+  cursor: pointer;
+  padding: 14px 18px 14px 18px;
+  padding-right: 38px;
+  position: relative;
+  user-select: none;
+  border-radius: 6px;
+}
+details.fnd-panel-collapsible > summary::-webkit-details-marker { display: none; }
+details.fnd-panel-collapsible > summary::marker { content: ""; }
+details.fnd-panel-collapsible > summary > .pt { margin-bottom: 0; }
+details.fnd-panel-collapsible > summary::after {
+  content: "▸";
+  position: absolute;
+  right: 18px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--text2);
+  font-size: 14px;
+  transition: transform .15s ease;
+}
+details.fnd-panel-collapsible[open] > summary::after { transform: translateY(-50%) rotate(90deg); }
+details.fnd-panel-collapsible[open] > summary {
+  border-bottom: 1px solid var(--border);
+  border-radius: 6px 6px 0 0;
+}
+details.fnd-panel-collapsible > summary:hover { background: var(--surface2, rgba(0,0,0,.025)); }
+[data-theme="dark"] details.fnd-panel-collapsible > summary:hover { background: rgba(255,255,255,.04); }
+.fnd-panel-body { padding: 14px 20px 18px; }
 
 .fnd-diagram pre {
   background: var(--surface2, #f3f5f8);

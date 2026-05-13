@@ -1,7 +1,7 @@
 // Shared renderer for Foundation topic pages. Each /foundations/<slug> route
 // mounts a thin module that calls into here with its topic id.
 
-import { html, $, badge, escapeHtml } from '../../core/ui.js';
+import { html, $, badge, escapeHtml, highlightExampleHtml } from '../../core/ui.js';
 import { FOUNDATIONS, foundationById } from '../../data/foundations.js';
 import { getFndDone, setFndDone, getExplain, setExplain, getVoicePref, setVoicePref } from '../../core/storage.js';
 import { extractListenable, getVoices, pickDefaultVoice, play, cancelAll } from '../../core/voice.js';
@@ -71,13 +71,12 @@ function handsOnSelfCheckHtml(items, f) {
     </div>`;
 }
 
-function panelHtml(p) {
+function panelHtml(p, opts = {}) {
   const cloudCls = p.cloud === 'aws' ? 'aws' :
                    p.cloud === 'azure' ? 'azure' :
                    p.cloud === 'tf' ? 'tf' : 'home';
-  return `
-    <div class="card fnd-panel fnd-panel-${cloudCls}">
-      <div class="pt pt-${cloudCls}">${badge(p.cloud)} <strong>${escapeHtml(p.service)}</strong></div>
+  const header = `<div class="pt pt-${cloudCls}">${badge(p.cloud)} <strong>${escapeHtml(p.service)}</strong></div>`;
+  const body = `
       <div class="fnd-plain"><span class="layer-label">Plain</span>
         <p>${p.plain}</p>
       </div>
@@ -87,9 +86,24 @@ function panelHtml(p) {
       ${p.example ? `
         <div class="fnd-example">
           <span class="layer-label">Example</span>
-          <pre><code>${escapeHtml(p.example)}</code></pre>
+          <pre><code class="fnd-code">${highlightExampleHtml(p.example, p.exampleAnnotations)}</code></pre>
           ${exampleAnnotationsHtml(p.exampleAnnotations)}
-        </div>` : ''}
+        </div>` : ''}`;
+
+  // Collapsible variant — used when the topic sets collapsedPanels: true.
+  // First panel stays open as a landing card; the rest collapse.
+  if (opts.collapsible) {
+    return `
+      <details class="card fnd-panel fnd-panel-${cloudCls} fnd-panel-collapsible"${opts.open ? ' open' : ''}>
+        <summary>${header}</summary>
+        <div class="fnd-panel-body">${body}</div>
+      </details>`;
+  }
+
+  return `
+    <div class="card fnd-panel fnd-panel-${cloudCls}">
+      ${header}
+      ${body}
     </div>`;
 }
 
@@ -165,8 +179,11 @@ export function renderFoundation(id) {
         <div class="fnd-mnemonic">🧠 <strong>Remember:</strong> ${escapeHtml(f.intro.mnemonic)}</div>
       </div>
 
-      <div class="fnd-panels grid-${f.panels.length === 1 ? '1' : '2'}">
-        ${f.panels.map(panelHtml).join('')}
+      <div class="fnd-panels grid-${f.panels.length === 1 ? '1' : '2'}${f.collapsedPanels ? ' fnd-panels-collapsible' : ''}">
+        ${f.panels.map((p, i) => panelHtml(p, {
+          collapsible: !!f.collapsedPanels,
+          open: i === 0,
+        })).join('')}
       </div>
 
       ${f.diagram ? `
