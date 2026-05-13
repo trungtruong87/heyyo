@@ -1005,6 +1005,7 @@ Write-Output "Done. Actions: $($actions.Count)"`,
       'Drift detected via <code>terraform plan -refresh-only</code> and root cause identified in the Activity Log (who, when, what changed).',
       'Module re-applied — <code>enforcementMode</code> back to <code>Default</code>. State and reality agree again.',
       'Prevention mechanism in place: either Azure Policy denying direct modifications to IaC-owned resources, or a pipeline gate. Process alone is not enough.',
+      'Terraform module shows the assignment with <code>enforcement_mode = "Default"</code> and a comment explaining the SPN-only RBAC fence — readable in a PR diff.',
     ],
     investigate: {
       summary: 'Detect drift; trace the change; plan the fix.',
@@ -1047,6 +1048,33 @@ Write-Output "Done. Actions: $($actions.Count)"`,
           body: `<p>Close with the structural fix so the next reader knows this won't recur. RBAC is the real fence; the Defender alert is the seatbelt.</p>
 <pre><code>- **Prevention:** RBAC at the policy assignment scope tightened — only the Terraform service principal has Resource Policy Contributor. Humans need a PR.
 - **Detective backstop:** Defender alert "Policy assignment modified" at the MG scope, routes to #platform-alerts.</code></pre>`,
+        },
+        {
+          label: 'The HCL — show the corrected assignment block',
+          body: `<p>The post-mortem above is what stakeholders read in the channel. The <strong>actual fix</strong> is a one-line change in the Terraform module — the value that re-applied. Make it greppable so the next person doing this same triage finds it in seconds.</p>
+<pre><code># platform/governance/policy-assignments.tf
+#
+# Drift fence: this assignment is owned exclusively by the Terraform SPN.
+# Humans don't have Resource Policy Contributor on this scope —
+# console edits will fail at RBAC, not at \`terraform plan\`.
+# See: T8 — "Drifted Azure Policy assignment — re-deploy via Terraform"
+
+resource "azurerm_management_group_policy_assignment" "storage_public_blob_deny" {
+  name                 = "storage-public-blob-deny"
+  management_group_id  = data.azurerm_management_group.workloads.id
+  policy_definition_id = azurerm_policy_definition.storage_public_blob_deny.id
+  display_name         = "Storage: deny public blob access"
+
+  enforce          = true             # Audit-mode rollout finished 2025-11-15; now enforcing.
+  # enforcement_mode is set via the \`enforce\` argument on azurerm_management_group_policy_assignment.
+  # \`enforce = true\`  → "Default" (block per the policy's effect)
+  # \`enforce = false\` → "DoNotEnforce" (visible but evaluates nothing — only for incident pauses)
+
+  non_compliance_message {
+    content = "Storage accounts must block public blob access. Request an exemption if a vendor share is needed."
+  }
+}</code></pre>
+<p>One thing to notice: there is <strong>no <code>lifecycle { ignore_changes = [...] }</code></strong> block. We <em>want</em> <code>terraform plan</code> to scream the next time someone edits this in the portal — that\'s the entire drift-detection mechanism. Adding <code>ignore_changes</code> here would silence the canary.</p>`,
         },
       ],
       artifactKind: 'note',

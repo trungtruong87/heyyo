@@ -315,6 +315,66 @@ A user in <code>prod-001</code> tries to <code>iam:CreateUser</code> in <code>us
           { token: '"Sid": "DenyOtherRegions"', type: 'user', note: 'Optional statement id — your label, any string (helpful in logs).' },
         ],
       },
+      {
+        cloud: 'aws',
+        service: 'SCP patterns you\'ll actually write',
+        plain: `Three patterns cover ~80% of real compliance SCPs:
+                (1) <strong>Deny + NotAction</strong> — an "allowlist": deny everything except the
+                services this OU is supposed to use.
+                (2) <strong>aws:PrincipalOrgID</strong> — lock cross-account resource policies
+                (S3 buckets, KMS keys) so only principals inside your own AWS Org can call them.
+                (3) <strong>aws:MultiFactorAuthPresent</strong> — deny sensitive actions unless the
+                calling session was MFA-authenticated. The standard "protect the management surface" guardrail.`,
+        detail: [
+          '<b>Pattern 1 — Allowlist via <code>Deny + NotAction</code>:</b> deny <em>everything</em> EXCEPT the services on the list. Pair with the org root\'s default <code>FullAWSAccess</code>. Common on Sandbox / Network / Security OUs where the workload set is narrow.',
+          '<b>Pattern 2 — <code>aws:PrincipalOrgID</code>:</b> a global condition key that resolves to your AWS Organizations ID (<code>o-xxxxxxxxxx</code>). Use in resource-policy denies ("only principals in our Org can read this S3 bucket") and in SCPs ("only roles in our Org can assume into us"). The modern replacement for hand-maintained account-ID allowlists.',
+          '<b>Pattern 3 — MFA-conditioned deny:</b> deny sensitive actions when <code>aws:MultiFactorAuthPresent</code> is <code>false</code>. Typical scope: management account, security tooling account, root-equivalent roles. Doesn\'t make MFA "required" by itself — it caps what a non-MFA session can do.',
+        ],
+        example: `// Pattern 1 — Sandbox OU allowlist
+{ "Version": "2012-10-17",
+  "Statement": [{
+    "Sid": "AllowlistSandboxServices",
+    "Effect": "Deny",
+    "NotAction": [
+      "ec2:*", "s3:*", "cloudwatch:*", "logs:*",
+      "iam:*", "organizations:*", "support:*"
+    ],
+    "Resource": "*"
+}]}
+
+// Pattern 2 — only roles inside our Org can call this
+{ "Version": "2012-10-17",
+  "Statement": [{
+    "Sid": "DenyCallersOutsideOurOrg",
+    "Effect": "Deny",
+    "Action": ["s3:*", "kms:*"],
+    "Resource": "*",
+    "Condition": {
+      "StringNotEquals": { "aws:PrincipalOrgID": "o-abcd1234ef" }
+    }
+}]}
+
+// Pattern 3 — deny sensitive ops without MFA
+{ "Version": "2012-10-17",
+  "Statement": [{
+    "Sid": "RequireMFAForSensitive",
+    "Effect": "Deny",
+    "Action": ["iam:*", "kms:ScheduleKeyDeletion", "organizations:LeaveOrganization"],
+    "Resource": "*",
+    "Condition": {
+      "BoolIfExists": { "aws:MultiFactorAuthPresent": "false" }
+    }
+}]}`,
+        exampleAnnotations: [
+          { token: '"NotAction"', type: 'keyword', note: 'AWS keyword — apply the Effect to everything EXCEPT these actions. Used with Deny to build an allowlist.' },
+          { token: '"aws:PrincipalOrgID"', type: 'keyword', note: 'AWS global condition key. Resolves to your Organizations ID at call time.' },
+          { token: '"aws:MultiFactorAuthPresent"', type: 'keyword', note: 'AWS global condition key. True when the caller used MFA to obtain the session.' },
+          { token: '"BoolIfExists"', type: 'keyword', note: 'Condition operator — evaluates the key if present, treats as null if not. Critical here: a missing key would otherwise short-circuit the Deny.' },
+          { token: '"StringNotEquals"', type: 'keyword', note: 'Condition operator — match when the value is NOT equal to any in the list.' },
+          { token: '"o-abcd1234ef"', type: 'user', note: 'Your AWS Organizations ID — looks like "o-" + 10 hex characters. Find it in the Organizations console.' },
+          { token: 'ec2:*, s3:*, cloudwatch:*, logs:*', type: 'user', note: 'Your service list — choose the services this OU is allowed to use.' },
+        ],
+      },
     ],
     diagram: `         IAM / RBAC                  SCP
         (what you CAN do)        (what's POSSIBLE in this account)
@@ -371,6 +431,8 @@ A user in <code>prod-001</code> tries to <code>iam:CreateUser</code> in <code>us
       '<b>SCPs don\'t apply to service-linked roles.</b> Sometimes a "blocked" action goes through anyway because CloudFormation or another service made the call on its own role. Check the principal in CloudTrail.',
       'Roll out new SCPs by <b>enabling them in audit via Service Authorization analyzer</b> for ~1 week before flipping to enforce. Catches the "we forgot one workload depended on this" case.',
       'Region-deny SCP via CT covers <b>regional</b> services. Global services (IAM, Route 53, CloudFront, Organizations, Billing) remain accessible — by design, but auditors ask why.',
+      '<b><code>aws:PrincipalOrgID</code></b> is the modern way to scope "only us" on cross-account resource policies (S3 bucket policies, KMS key policies, SNS, SQS). One condition replaces a hand-maintained account-ID allowlist that drifts every time a new account is vended.',
+      '<b>MFA-conditioned SCPs use <code>BoolIfExists</code></b>, not <code>Bool</code>. The key is absent for service principals and assumed sessions that never carried MFA — <code>Bool</code> would treat absent as false and accidentally deny those calls; <code>BoolIfExists</code> only fires when the key is explicitly present and false.',
     ],
     handsOn: {
       intro: 'A short exercise on SCP evaluation. Use the lab bench if you want to play first; reveal the model answer when ready.',
@@ -387,6 +449,24 @@ A user in <code>prod-001</code> tries to <code>iam:CreateUser</code> in <code>us
           question: 'A parent OU has an SCP that denies <code>s3:DeleteBucket</code> on every account beneath it. A child account adds its own SCP whose <code>Effect</code> is <code>Allow</code> for <code>s3:DeleteBucket</code>. Will an admin in the child account be able to delete a bucket? Why or why not?',
           hint: 'SCPs are <em>restrictions</em>, not grants. Read the conceptDive callout above if you want a refresher.',
           answer: `<p>No. An Allow SCP doesn't grant anything — at best, it refrains from denying. The parent OU's Deny stays on the path and fires. Both checkpoints evaluate; the parent says no; end of story. IAM is never consulted. This is the "most specific rule wins" trap — that pattern works in IAM permissions and file ACLs, but <b>not</b> in SCPs. Restrictions stack; they do not override.</p>`,
+        },
+        {
+          label: 'Q3',
+          question: `Your team lead wants to limit a single contractor role (<code>ContractorReadOnly</code>) in the Dev account so it can <strong>never</strong> exceed read-only on S3, even if the IAM policies attached to it are edited later. Three tools are on the table:
+<ol>
+  <li>An <b>SCP</b> denying write actions across the org.</li>
+  <li>A <b>Permission Boundary</b> attached to the <code>ContractorReadOnly</code> role.</li>
+  <li>A more restrictive <b>IAM policy</b> on the role.</li>
+</ol>
+<strong>Which is the right tool, and why are the other two wrong for this specific job?</strong>`,
+          hint: 'Scope of the restriction matters. SCPs cap the account; IAM grants per principal; Permission Boundaries cap a specific principal.',
+          answer: `<p><strong>Permission Boundary on the role.</strong> It is the only tool that caps the <em>maximum</em> permissions of <em>one specific principal</em>. Even if someone attaches an admin IAM policy later, the effective permissions are <code>(IAM policy) ∩ (Boundary)</code> — the boundary keeps the role read-only on S3 regardless.</p>
+<p>Why the other two are wrong:</p>
+<ul>
+<li><strong>SCP (option 1)</strong> caps every principal in the account, not just the contractor. Denying write across the account breaks legitimate developer roles too. Right tool, wrong scope.</li>
+<li><strong>IAM policy (option 3)</strong> is a grant, not a cap. Someone with <code>iam:PutRolePolicy</code> can attach a broader policy later — the IAM-only restriction can be lifted without leaving a trace at the boundary.</li>
+</ul>
+<p>The hierarchy to memorize: <strong>SCP caps the account · Permission Boundary caps the principal · IAM Policy grants permissions to the principal</strong>. The effective answer at evaluation time is the <em>intersection</em> of all three.</p>`,
         },
       ],
       selfCheck: [
@@ -470,6 +550,43 @@ exports.handler = async (event) => {
           { token: '"Has Owner tag" / "Missing Owner tag"', type: 'user', note: 'Your annotation string — surfaces in the AWS Config console for on-call.' },
         ],
       },
+      {
+        cloud: 'aws',
+        service: 'Guard DSL — declarative custom rules without writing Lambda',
+        plain: `Most custom Config rules are simple "field must equal" or "field must match"
+                checks — no real branching logic. For these, the <strong>CloudFormation Guard</strong>
+                DSL is the modern path: a small YAML-ish file that AWS Config compiles into a
+                rule for you. No Lambda code, no IAM role, no cold-start. Faster to author, faster to
+                review, easier to diff in a PR.`,
+        detail: [
+          '<b>What it is</b>: a YAML/Rego-style mini-language. You declare the resource type you care about + the predicate (<code>this property must equal that value</code>).',
+          '<b>When Guard fits</b>: anything you could express as "this field on this resource type must / must not be / must match X." Tag presence, encryption flags, versioning on, public access off, region restrictions.',
+          '<b>When Guard does NOT fit</b>: anything that needs branching logic, regex on a string, lookup against an external table, or cross-resource correlation. Use Lambda for those.',
+          '<b>Authoring loop</b>: write the <code>.guard</code> file → test locally with the <code>cfn-guard</code> CLI against a sample resource snapshot → commit → deploy as a Config rule with type <code>CUSTOM_POLICY</code>.',
+          '<b>Cost angle</b>: Guard rules don\'t invoke Lambda, so they\'re cheaper at scale than the equivalent custom Lambda rule.',
+        ],
+        example: `# Owner tag must exist (the simple half of the Lambda example).
+# The "@-in-string" check would still need Lambda — Guard has no regex.
+
+rule require_owner_tag when resourceType == "AWS::S3::Bucket" {
+  Tags exists
+  Tags[*] {
+    Key == "Owner"
+    Value != ""
+  } <<
+    Owner tag is required on every S3 bucket
+  >>
+}`,
+        exampleAnnotations: [
+          { token: 'rule require_owner_tag when', type: 'keyword', note: 'Guard DSL — declares a named rule with a guard clause.' },
+          { token: 'resourceType == "AWS::S3::Bucket"', type: 'keyword', note: 'Guard built-in — filters the rule to a specific resource type.' },
+          { token: 'Tags exists', type: 'keyword', note: 'Guard predicate — the field must be present on the resource.' },
+          { token: 'Tags[*] { ... }', type: 'keyword', note: 'Guard array iteration — apply the inner block to every element.' },
+          { token: 'Key == "Owner"', type: 'keyword', note: 'Guard predicate — string equality on a property.' },
+          { token: '<< ... >>', type: 'keyword', note: 'Guard custom message — surfaces in Config evaluation results as the annotation.' },
+          { token: '"Owner"', type: 'user', note: 'Your tag key — pick the convention your org standard requires.' },
+        ],
+      },
     ],
     diagram: `   Resources change → Config records the change
                               │
@@ -491,9 +608,10 @@ exports.handler = async (event) => {
       'Auto-remediation via SSM document: only enable after a week of <b>"annotate but don\'t fix"</b>. Humans need lead time to fix bad data before the bot starts changing things.',
       'Tag the rule with owner + JIRA + intent in the description field. Six months later you (or your replacement) will forget why it exists. Save them the archaeology.',
       'Most of the time, a managed rule already exists — <b>check the catalog first</b> before writing a custom Lambda.',
+      '<b>Config Aggregator advanced queries are SQL-like.</b> Auditors live here: <code>SELECT accountId, resourceId, configuration.complianceType FROM aws_config_compliance_by_resource WHERE complianceType = \'NON_COMPLIANT\'</code>. One query, every account in the aggregator, exported to CSV in seconds. Pin the queries you re-run quarterly.',
     ],
     handsOn: {
-      intro: 'One exercise on extending a custom Config rule. The skill is reading code someone else wrote and modifying it cleanly.',
+      intro: 'Three exercises walking the Lambda and Guard examples, plus the SSM remediation hand-off pattern.',
       steps: [
         {
           label: 'Q1',
@@ -527,6 +645,49 @@ return {
 </li>
 </ol>
 <p>The annotation lands in the Config console — it is what FinOps reads first when triaging. Vague annotations create extra round-trips.</p>`,
+        },
+        {
+          label: 'Q2',
+          question: `For each requirement below, decide the right tool: <strong>managed rule</strong>, <strong>custom Lambda</strong>, or <strong>Guard DSL</strong>. Explain in one line each.
+<ol>
+  <li>"Every S3 bucket must block public access."</li>
+  <li>"Owner tag must contain an <code>@</code>."</li>
+  <li>"Every EBS volume must be attached to an instance tagged with the same <code>CostCenter</code> as the volume."</li>
+</ol>`,
+          hint: 'Managed = pre-built. Guard = simple field check, no regex. Lambda = anything with branching, regex, or cross-resource lookups.',
+          answer: `<ol>
+<li><strong>Managed rule</strong> — <code>s3-bucket-public-access-prohibited</code> already exists. The managed catalog covers ~250 common checks. Always check the catalog before writing anything custom.</li>
+<li><strong>Custom Lambda</strong> — the <code>@</code>-in-string check needs regex (or at least <code>.includes("@")</code>). Guard has no regex. The managed <code>required-tags</code> rule can verify presence but not format.</li>
+<li><strong>Custom Lambda</strong> — cross-resource correlation (volume tag must match its attached instance tag). Guard works one resource at a time; managed rules don\'t do joins.</li>
+</ol>
+<p>The default decision order: <strong>managed first → Guard if it\'s a simple field check → Lambda if neither fits.</strong> Most teams skip Guard and reach for Lambda by reflex, then pay for it in Lambda invocations forever.</p>`,
+        },
+        {
+          label: 'Q3',
+          question: `Here is a short SSM Automation document a teammate wrote to auto-remediate "S3 bucket has public access":
+<pre><code>schemaVersion: "0.3"
+description: "Block public access on a non-compliant S3 bucket"
+parameters:
+  BucketName:
+    type: String
+mainSteps:
+  - name: blockPublicAccess
+    action: aws:executeAwsApi
+    inputs:
+      Service: s3
+      Api: PutPublicAccessBlock
+      Bucket: "{{ BucketName }}"
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        IgnorePublicAcls: true
+        BlockPublicPolicy: true
+        RestrictPublicBuckets: true</code></pre>
+<strong>(a)</strong> If <code>BucketName</code> doesn\'t exist (typo / already deleted), what happens and what does the user see in the Config console? <strong>(b)</strong> What\'s the safe rollout — what would you do for the first week before letting this remediation run automatically?`,
+          hint: 'SSM automation steps fail loudly; Config marks the remediation as failed. The safe rollout is to keep the Config rule active but disable auto-remediation.',
+          answer: `<ul>
+<li>(a) The <code>aws:executeAwsApi</code> step calls <code>PutPublicAccessBlock</code>, gets a <code>NoSuchBucket</code> error, and the automation execution status flips to <strong>Failed</strong>. Config logs the remediation attempt and the failure — the resource stays non-compliant. The user sees <em>"Remediation action failed"</em> in the Config console for that resource, with the SSM execution ID as the link. They click through to see the actual error.</li>
+<li>(b) <strong>Week 1: detect, do not remediate.</strong> Attach the Config rule (so non-compliance is flagged) but leave the SSM remediation in <em>manual</em> mode — humans click "Remediate" per resource. Watch for false positives, exceptions, and "we shouldn\'t fix this yet" cases. Once the human queue is clean for ~3 days, flip remediation to <strong>auto</strong>. Skipping this step is the #1 way remediation runbooks nuke production buckets at 3am.</li>
+</ul>`,
         },
       ],
       selfCheck: [
@@ -600,6 +761,56 @@ return {
         SSO permission sets attached →
         AFT runs Terraform customizations`,
       },
+      {
+        cloud: 'aws',
+        service: 'AFT customization — Terraform-driven account baselines',
+        plain: `Raw Account Factory hands you a new account with the Control Tower baseline.
+                Real orgs also want a <strong>standard set of resources</strong> on day one:
+                a baseline IAM role for break-glass, mandatory tags, a private VPC, a budget alarm.
+                <strong>AFT</strong> (Account Factory for Terraform) is the production extension:
+                an AWS-published Terraform pipeline that automatically applies your customizations
+                Terraform module against every newly vended account.`,
+        detail: [
+          '<b>AFT = a pipeline you don\'t write</b> — AWS publishes the deployment Terraform; you populate two repos: <code>aft-account-customizations</code> (per-account-type recipes) and <code>aft-global-customizations</code> (every account gets these).',
+          '<b>What lives in each customization repo</b>: a <code>terraform/</code> folder of .tf files. AFT runs <code>terraform apply</code> against the new account using a cross-account role.',
+          '<b>Two trigger modes</b>: at account vending (default) and on-demand re-run (when you change the recipe and want to re-baseline existing accounts).',
+          '<b>vs CfCT</b>: <i>Customizations for Control Tower</i> is the older CloudFormation-StackSets-based extension. AFT replaced it for most net-new orgs. If you inherit a CfCT codebase, plan to migrate.',
+        ],
+        example: `# aft-account-customizations/terraform/main.tf
+# Runs against every account in the "workloads-nonprod" account type.
+
+resource "aws_iam_role" "break_glass" {
+  name = "BreakGlassReadOnly"
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17",
+    Statement = [{
+      Effect = "Allow",
+      Principal = { AWS = "arn:aws:iam::\${var.security_account_id}:root" }
+      Action = "sts:AssumeRole",
+      Condition = { Bool = { "aws:MultiFactorAuthPresent" = "true" } }
+    }]
+  })
+}
+
+resource "aws_iam_role_policy_attachment" "break_glass_ro" {
+  role       = aws_iam_role.break_glass.name
+  policy_arn = "arn:aws:iam::aws:policy/ReadOnlyAccess"
+}
+
+# Mandatory tags on the account itself
+resource "aws_organizations_tag" "owner" {
+  resource_id = data.aws_caller_identity.current.account_id
+  key         = "Owner"
+  value       = var.account_owner_email
+}`,
+        exampleAnnotations: [
+          { token: 'aft-account-customizations/terraform/main.tf', type: 'keyword', note: 'AFT convention — Terraform files under terraform/ are run on every matching account.' },
+          { token: 'resource "aws_iam_role"', type: 'keyword', note: 'AWS provider resource — IAM role in the new account.' },
+          { token: 'resource "aws_organizations_tag"', type: 'keyword', note: 'AWS provider resource — applies a tag to the AWS account itself (not its resources).' },
+          { token: '"BreakGlassReadOnly"', type: 'user', note: 'Your role name — the audit-time emergency-access pattern.' },
+          { token: '${var.security_account_id} / ${var.account_owner_email}', type: 'user', note: 'AFT variables — defined in account-request inputs and passed at apply time.' },
+        ],
+      },
     ],
     diagram: `  Person needs cloud space
           │
@@ -620,6 +831,48 @@ return {
             │
             ▼
        Hand to the team`,
+    conceptDive: {
+      title: 'What\'s in a baseline — the day-1 checklist',
+      body: `
+        <section class="cd-section">
+          <h3 class="cd-h">"Baseline" is what every vended account gets, automatically</h3>
+          <p>"Landing Zone" is the high-level word. The concrete thing is the <strong>baseline</strong>:
+          the inventory of guardrails + plumbing that flips on for a new account before anyone touches it.
+          Memorize this list — it\'s the checklist you walk in the T3 verification ticket.</p>
+        </section>
+
+        <section class="cd-section">
+          <h3 class="cd-h">The six things a Control Tower baseline applies</h3>
+          <ul>
+            <li><strong>1 · Org placement</strong> — account lands in the chosen OU. <em>This alone</em> applies every SCP on the path from Root → OU.</li>
+            <li><strong>2 · Detective layer</strong> — AWS Config recorder is on; the Strongly Recommended Config rules for the OU are enabled.</li>
+            <li><strong>3 · Audit trail</strong> — CloudTrail is on; events ship to the centralized log-archive bucket in the Security OU. Read-only for the workload team.</li>
+            <li><strong>4 · Identity</strong> — IAM Identity Center permission sets are attached so the right humans can sign in via SSO. No root login configured.</li>
+            <li><strong>5 · Tagging</strong> — mandatory account-level tags (Owner, CostCenter, Environment) set by the request form.</li>
+            <li><strong>6 · AFT customizations</strong> — if AFT is in play, the customization Terraform runs and adds whatever else your org standardizes on (baseline IAM roles, budget alarms, private VPC, default KMS key).</li>
+          </ul>
+        </section>
+
+        <section class="cd-section">
+          <h3 class="cd-h">What is NOT in the baseline</h3>
+          <p>Workload-specific anything: EC2 capacity, S3 buckets for the team\'s data, RDS, Lambda functions.
+          The baseline gets the <em>environment</em> safe and observable; the team adds their workloads after.</p>
+          <aside class="cd-callout">
+            <strong class="cd-callout-tag">⚑ Tattoo this</strong>
+            <p>Audit findings cluster on the gap between <em>configured</em> baseline and <em>applied</em> baseline.
+            Control Tower says "I configured X"; you verify "X is actually applied to <strong>this</strong> account."
+            That\'s what T3 is about.</p>
+          </aside>
+        </section>
+
+        <section class="cd-section">
+          <h3 class="cd-h">Azure parity</h3>
+          <p>The Azure equivalent of a baseline is the same list, different tools:
+          MG placement (replaces OU placement), MCSB initiative inherited from MG root (replaces SCP+Config inheritance),
+          Activity Log + diagnostic settings → central Log Analytics workspace (replaces CloudTrail),
+          Entra ID groups → RBAC (replaces IAM Identity Center), tags set by the subscription-vending pipeline.</p>
+        </section>`,
+    },
     fieldNotes: [
       '<b>CT drift detection runs hourly.</b> Don\'t ignore drift notifications — that\'s a guardrail that has silently failed. Re-enroll the OU/account to fix.',
       '<b>Customizing CT requires CfCT</b> (Customizations for Control Tower) — it adds CodePipeline + CFN StackSets to your CT management account. Adopt it before you have ten one-off scripts.',
@@ -653,6 +906,22 @@ return {
 <li><strong>Proactive — CloudFormation Hook.</strong> Inspects the template before resources are created. Like preventive but at template-shape level; cannot affect resources that already exist.</li>
 </ul>
 <p>So when you inherit a messy account, the first control type you reach for is detective — it tells you what's already wrong. SCPs and Hooks stop the bleed going forward.</p>`,
+        },
+        {
+          label: 'Q3',
+          question: `Three Control Tower controls land on your desk for tier classification before the change-review meeting. <strong>For each, decide: Mandatory, Strongly Recommended, or Elective — and say why.</strong>
+<ol>
+  <li><i>"Disallow changes to AWS Config rules created by Control Tower."</i></li>
+  <li><i>"Require encryption at rest on all S3 buckets."</i></li>
+  <li><i>"Disallow internet access for AWS Lambda functions via VPC config."</i></li>
+</ol>`,
+          hint: 'Mandatory = always on, no opt-out (protects Control Tower itself or the audit trail). Strongly Recommended = on for most OUs, document any opt-out. Elective = opt-in per OU based on workload risk.',
+          answer: `<ol>
+<li><strong>Mandatory.</strong> Control Tower\'s own scaffolding (its Config rules, its log-archive bucket, its core SCPs) must stay intact or the whole landing zone unravels. There is no business case for letting workload teams modify CT-managed Config rules. AWS classifies this whole family as mandatory.</li>
+<li><strong>Strongly Recommended.</strong> Encryption-at-rest on S3 is a baseline expectation, but a handful of legitimate exceptions exist (publicly-served static assets where encryption doesn\'t apply, vendor-shared open data). Most OUs enable it; the exceptions are documented per OU.</li>
+<li><strong>Elective.</strong> Locking Lambda to VPC-only is workload-shape-dependent. A data-pipeline OU with internal APIs only wants this on; a SaaS-edge OU that needs Lambda to call public partner APIs will turn it off and accept the risk. Per-OU decision.</li>
+</ol>
+<p>The auditor language to memorize: <strong>"Why is this Strongly Recommended control off?"</strong> is the most common audit follow-up. Have the answer written down before you opt out, not after.</p>`,
         },
       ],
       selfCheck: [
@@ -746,6 +1015,26 @@ return {
         ],
       },
     ],
+    diagram: `Audit → Deny rollout (the safe pattern):
+
+  Author definition
+        │  (custom policy or pick from built-in catalog)
+        ▼
+  Assign with "effect": "audit"
+        │  (no blocking — just records non-compliance)
+        ▼
+  Wait ~1 week
+        │  Watch the compliance pane.
+        │  Contact owners of non-compliant resources.
+        │  Decide per-resource: remediate, exempt, accept.
+        ▼
+  Promote to "effect": "deny"
+        │  (now blocks new violations)
+        ▼
+  Continuous evaluation
+        ↳ change events (~minutes) + 24h periodic sweeps
+        ↳ Defender for Cloud surfaces failures as recommendations
+        ↳ Secure Score updates`,
     fieldNotes: [
       '<b>Azure Policy DINE / Modify effects need a Managed Identity</b> at the assignment with the right RBAC role (usually Contributor + the specific Action). Missing identity = silent no-op. This is the #1 reason DINE policies "don\'t work."',
       'Policy evaluation cycles: change event (~minutes), full scan (every 24h), on-demand via <code>Start-AzPolicyComplianceScan</code>. <b>Auditors don\'t wait 24h</b> — know how to force the scan.',
@@ -790,6 +1079,19 @@ Identify (a) the <em>field</em> being checked (the one that does the actual work
 <li>Grant the identity the required role at the scope. The policy definition usually names what it needs in <code>policyRule.then.details.roleDefinitionIds</code>.</li>
 <li>Trigger a fresh evaluation with <code>Start-AzPolicyComplianceScan</code> — don't wait 24h for the next periodic sweep.</li>
 </ol>`,
+        },
+        {
+          label: 'Q3',
+          question: `You\'re rolling out a new <strong>region-deny</strong> policy at the Workloads MG. You assign it in <code>audit</code> mode. After 24h the compliance pane shows <strong>12 non-compliant resources</strong>; three of them belong to a team that hasn\'t responded to messages in months. Compliance wants the policy flipped to <code>deny</code> by end-of-quarter. <strong>Walk the next two weeks — what do you do, in order, and what happens at each step to the 3 dormant-team resources?</strong>`,
+          hint: 'Audit → contact → triage → exempt where needed → flip to Deny. Dormant owners get a default category and a hard expiry.',
+          answer: `<ol>
+<li><strong>Day 1–2 (kickoff).</strong> Export the compliance pane to CSV (12 rows). For each row, message the owner via Teams/Slack with the resource ID + the planned <code>deny</code> date. Open a tracker (Jira / spreadsheet) with one row per resource: owner, status, decision.</li>
+<li><strong>Day 3–7 (await responses).</strong> Most owners reply with "fix now" or "give me a week." Move 6–9 of them through self-remediation. Keep the policy in <code>audit</code> — the compliance pane stays the source of truth.</li>
+<li><strong>Day 7–10 (escalation pass).</strong> For non-responders (the 3 dormant-team resources): <em>escalate to that team\'s manager or the security lead</em>. Document the escalation in the tracker. If still no response by Day 10, default to <strong>create an exemption</strong> — category <code>Waiver</code> (we have no compensating control documented), expiresOn <strong>Day 30</strong>, description: "Owner unresponsive; exemption pending owner contact; auto-revokes Day 30."</li>
+<li><strong>Day 10 (flip to Deny).</strong> The remaining 0–3 non-exempt resources will get blocked on next change. That\'s the intended consequence. Send one final announcement in <code>#platform-changes</code> with the cutover time.</li>
+<li><strong>Day 10–30 (exemption window).</strong> The dormant team will discover the exemption when they finally try to deploy in the wrong region — the deny fires for new resources, the exemption holds existing ones. Now you have an active owner to talk to. The exemption auto-expires Day 30; if they need longer, they file a renewal with a real category (Mitigated, ideally) — not a quiet bump of the date.</li>
+</ol>
+<p>Two principles: <strong>(a) audit is the soft-launch lane</strong> — never go straight to deny on a brand-new policy; <strong>(b) every exemption has an expiry and a category</strong> — "permanent" exemptions become audit findings.</p>`,
         },
       ],
       selfCheck: [
@@ -1173,7 +1475,83 @@ Identify (a) the <em>field</em> being checked (the one that does the actual work
               tags applied →
                 pipeline assigns Owner / Contributor RBAC`,
       },
+      {
+        cloud: 'azure',
+        service: 'Extending MCSB with a custom "Corp-Security" initiative',
+        plain: `MCSB covers the broad baseline; every org needs more.
+                The rule: <strong>never fork MCSB itself</strong> (you lose Microsoft\'s updates).
+                Instead, author a small <em>custom initiative</em> with your org\'s extras
+                and assign it <strong>alongside</strong> MCSB at the same scope (typically the top MG).
+                Both initiatives evaluate; the union of failures shows up in Defender for Cloud.`,
+        detail: [
+          '<b>Author the initiative</b> as a <code>Microsoft.Authorization/policySetDefinitions</code> resource. It just lists the built-in or custom policy definition IDs you want bundled.',
+          '<b>Where to put corp-specific policies</b>: tag policies, naming conventions, allowed-image lists, mandatory diagnostic settings beyond MCSB\'s. Things that vary org-to-org.',
+          '<b>Assign it next to MCSB</b>: same scope (top MG), parallel assignment. Two initiative assignments, not one.',
+          '<b>Initiative parameters pass through</b>: define them at the initiative level so a single value flows to every member policy (allowed locations, allowed VM SKUs, etc.).',
+        ],
+        example: `// Custom initiative — assigned next to MCSB at the same scope
+{
+  "properties": {
+    "displayName": "Corp-Security",
+    "description": "Org extensions on top of MCSB. Never forks the built-in.",
+    "policyType": "Custom",
+    "parameters": {
+      "allowedLocations": {
+        "type": "Array",
+        "defaultValue": ["eastus", "westus2"]
+      }
+    },
+    "policyDefinitions": [
+      {
+        "policyDefinitionReferenceId": "deny-out-of-region",
+        "policyDefinitionId": "/providers/Microsoft.Authorization/policyDefinitions/e56962a6-4747-49cd-b67b-bf8b01975c4c",
+        "parameters": {
+          "listOfAllowedLocations": { "value": "[parameters('allowedLocations')]" }
+        }
+      },
+      {
+        "policyDefinitionReferenceId": "require-owner-tag",
+        "policyDefinitionId": "/subscriptions/.../providers/Microsoft.Authorization/policyDefinitions/corp-require-owner-tag"
+      },
+      {
+        "policyDefinitionReferenceId": "diagnostic-on-keyvault",
+        "policyDefinitionId": "/providers/Microsoft.Authorization/policyDefinitions/cf820ca0-f99e-4f3e-84fb-66e913812d21"
+      }
+    ]
+  }
+}`,
+        exampleAnnotations: [
+          { token: '"policyType": "Custom"', type: 'keyword', note: 'Azure keyword. "Custom" means you own it; "BuiltIn" means Microsoft owns it.' },
+          { token: '"policyDefinitions"', type: 'keyword', note: 'Initiative schema — the array of policies bundled in this initiative.' },
+          { token: '"policyDefinitionReferenceId"', type: 'keyword', note: 'Initiative-local identifier — your name for this member inside this initiative.' },
+          { token: '"policyDefinitionId"', type: 'keyword', note: 'Full Azure resource ID of the policy. Built-ins live at /providers/Microsoft.Authorization/...; custom at /subscriptions/.../...' },
+          { token: '"[parameters(\'allowedLocations\')]"', type: 'keyword', note: 'Azure Policy expression — pulls the value from the initiative-level parameter.' },
+          { token: '"Corp-Security" / "allowedLocations"', type: 'user', note: 'Your initiative name + your parameter name — any identifiers you choose.' },
+          { token: '"eastus", "westus2"', type: 'user', note: 'Your default region allowlist — the assignment can override.' },
+        ],
+      },
     ],
+    diagram: `Policy → MCSB → Defender → Secure Score:
+
+  Azure Policy definition (audit / deny / DINE / …)
+        │  (one rule, one verdict per evaluated resource)
+        ▼
+  MCSB built-in initiative
+        │  (bundles ~250 such definitions; curated by Microsoft)
+        ▼
+  Assigned at Tenant Root or top MG
+        │  (one assignment — all subs beneath inherit)
+        ▼
+  Resources evaluated continuously
+        │  (change events ~minutes, periodic sweeps 24h)
+        ▼
+  Defender for Cloud → Recommendations
+        │  (each non-compliant resource shows up as a rec)
+        ▼
+  Secure Score
+        ↳ % of remediated recommendations
+        ↳ rolling — fixes raise it; new failures drop it
+        ↳ Regulatory Compliance pane shows MCSB pass/fail per control`,
     fieldNotes: [
       '<b>MCSB compliance % ≠ Secure Score.</b> Different math, different denominator. Don\'t quote them as the same number in a meeting.',
       'Decode MCSB control IDs on sight — auditors use them as shorthand. <code>NS-1</code> = network restrictions, <code>ES-1</code> = endpoint protection, <code>LT-4</code> = logging on critical resources, etc.',
@@ -1237,8 +1615,8 @@ Identify (a) the <em>field</em> being checked (the one that does the actual work
     id: 'azure-runbooks',
     group: 'Azure Governance',
     order: 4,
-    title: 'Azure Automation Runbooks',
-    subtitle: 'PowerShell / Python scripts that run on a schedule with Azure auth baked in',
+    title: 'Azure Automation Runbooks + Az PowerShell',
+    subtitle: 'Runbooks for scheduled compliance loops; standalone Az.* scripts for everything else',
     cloud: 'azure',
     intro: {
       plain: `An Automation Runbook is a script (PowerShell or Python) that
@@ -1307,6 +1685,71 @@ foreach ($sub in Get-AzSubscription) {
           { token: 'Write-Output', type: 'keyword', note: 'PowerShell cmdlet — writes to the runbook output stream (~1MB job limit).' },
         ],
       },
+      {
+        cloud: 'azure',
+        service: 'Az PowerShell standalone — when you don\'t need a runbook',
+        plain: `A runbook is a script + a schedule + a managed identity, hosted in Azure.
+                But not every PS task needs all three. Ad-hoc audits ("how many public storage accounts do we have RIGHT NOW?"),
+                on-laptop investigation, and CI-driven compliance checks all use the <strong>same Az.* cmdlets</strong>
+                but run outside the Automation account. Same cmdlets, different host, different auth flavor.`,
+        detail: [
+          '<b>Three auth flavors:</b>',
+          '  • <code>Connect-AzAccount</code> (interactive, browser device-code) — for on-laptop investigation.',
+          '  • <code>Connect-AzAccount -Identity</code> — for managed identity (in a runbook, a VM, an Azure-hosted CI runner).',
+          '  • <code>Connect-AzAccount -ServicePrincipal -Tenant ... -CertificateThumbprint ...</code> — for CI outside Azure (GitHub Actions on a GitHub runner, etc.).',
+          '<b>Az.* modules worth knowing</b>: <code>Az.Accounts</code> (auth + subscription context), <code>Az.Resources</code> (Get-AzResource generic queries), <code>Az.Storage</code>, <code>Az.PolicyInsights</code> (Get-AzPolicyState — the compliance API), <code>Az.Security</code> (Defender), <code>Az.OperationalInsights</code> (Log Analytics).',
+          '<b>The multi-subscription pattern</b>: <code>Get-AzSubscription | ForEach-Object { Set-AzContext $_; ... }</code>. Most "audit script that misses 30 subs" bugs are a missing outer loop.',
+          '<b>Server-side <code>-Filter</code> beats client-side <code>Where-Object</code></b> for compliance queries: <code>Get-AzPolicyState -Filter "ComplianceState eq \'NonCompliant\'"</code> ships the predicate to Azure; <code>| Where-Object</code> pulls everything then filters locally. Big difference at 50k resources.',
+          '<b>Error handling</b>: wrap risky calls with <code>try { ... } catch { Write-Error $_ }</code> and add <code>-ErrorAction Stop</code> to cmdlets that don\'t throw by default. In a runbook use <code>Write-Error</code> (job continues); in a script you can <code>throw</code> to abort.',
+          '<b>Output</b>: emit structured objects (<code>[PSCustomObject]@{ ... }</code>) and pipe to <code>Export-Csv</code> / <code>ConvertTo-Json</code>. Don\'t print strings — you lose the column structure auditors want.',
+        ],
+        example: `# Standalone audit: find storage accounts allowing public blob across every sub.
+# Run on a laptop, in CI, or inside a runbook — same code.
+
+# Auth (pick one):
+Connect-AzAccount -Identity | Out-Null              # managed identity (runbook / VM / Azure CI)
+# Connect-AzAccount | Out-Null                       # interactive (laptop)
+# Connect-AzAccount -ServicePrincipal ...            # CI off-Azure
+
+$findings = @()
+
+foreach ($sub in Get-AzSubscription) {
+  try {
+    Set-AzContext -SubscriptionId $sub.Id -ErrorAction Stop | Out-Null
+  } catch {
+    Write-Warning "No access to $($sub.Name) — skipping."
+    continue
+  }
+
+  Get-AzStorageAccount | ForEach-Object {
+    if ($_.AllowBlobPublicAccess -eq $true) {
+      $findings += [PSCustomObject]@{
+        SubscriptionId = $sub.Id
+        SubName        = $sub.Name
+        ResourceGroup  = $_.ResourceGroupName
+        Account        = $_.StorageAccountName
+        Location       = $_.PrimaryLocation
+        SnapshotTime   = (Get-Date).ToUniversalTime().ToString("o")
+      }
+    }
+  }
+}
+
+# Auditor-grade output: one CSV row per finding, snapshot timestamped.
+$findings | Export-Csv -Path "./public-storage-$(Get-Date -Format yyyyMMdd).csv" -NoTypeInformation
+Write-Output "Findings: $($findings.Count)"`,
+        exampleAnnotations: [
+          { token: 'Connect-AzAccount -Identity', type: 'keyword', note: 'Az cmdlet — managed-identity auth. Works in any Azure-hosted runtime (runbook, VM, Azure-hosted CI runner).' },
+          { token: 'Get-AzSubscription', type: 'keyword', note: 'Az cmdlet — enumerates every subscription the current identity can read.' },
+          { token: 'Set-AzContext -SubscriptionId', type: 'keyword', note: 'Az cmdlet — pins all subsequent cmdlets to this subscription. Session is sticky; bugs hide here in cross-sub scripts.' },
+          { token: '-ErrorAction Stop', type: 'keyword', note: 'PowerShell common parameter — makes non-terminating errors terminate (so try/catch sees them).' },
+          { token: 'Get-AzStorageAccount', type: 'keyword', note: 'Az.Storage cmdlet — returns storage accounts in the current context.' },
+          { token: '$_.AllowBlobPublicAccess', type: 'keyword', note: 'Property on Microsoft.Storage/storageAccounts. Valid: $true / $false.' },
+          { token: '[PSCustomObject]@{ ... }', type: 'keyword', note: 'PowerShell idiom — structured row. Pipes cleanly to Export-Csv / ConvertTo-Json.' },
+          { token: 'Export-Csv -NoTypeInformation', type: 'keyword', note: 'PowerShell cmdlet — writes CSV without the leading "#TYPE" header that confuses auditors\' spreadsheet tools.' },
+          { token: "'public-storage-$(Get-Date ...).csv'", type: 'user', note: 'Your output filename — date-stamped so each run is an audit artifact.' },
+        ],
+      },
     ],
     fieldNotes: [
       '<b>Use a User-Assigned Managed Identity</b> in production. System-Assigned identity dies if the Automation account is recreated; user-assigned survives and can be reused across runbooks.',
@@ -1319,9 +1762,11 @@ foreach ($sub in Get-AzSubscription) {
       'The <b>Run As Account</b> (classic service-principal-in-an-Automation-account) was <b>deprecated in Sep 2023</b>. Don\'t introduce new dependencies on it. Existing runbooks should migrate to Managed Identity.',
       '<b>Hybrid Worker</b> — when you need to run a runbook against an on-prem or VNet-only resource. The worker runs on a VM in your network; the runbook code is the same. Use sparingly.',
       'Logged actions belong in a <b>custom Log Analytics table</b> via the Data Collector API. Searchable in KQL alongside other audit data, evidence-able for audits.',
+      '<b>Server-side <code>-Filter</code> beats client-side <code>Where-Object</code></b> for compliance queries. <code>Get-AzPolicyState -Filter "ComplianceState eq \'NonCompliant\'"</code> ships the predicate to Azure; <code>... | Where-Object { $_.ComplianceState -eq "NonCompliant" }</code> pulls everything across the wire and filters locally. Big difference at 50k resources.',
+      '<b>Az session subscription is sticky</b>. After <code>Set-AzContext -SubscriptionId X</code>, every subsequent cmdlet runs against X until you change it. Multi-sub bugs hide here — author your script around an outer <code>foreach (Get-AzSubscription)</code> + <code>Set-AzContext</code> pair, not a single hard-coded context.',
     ],
     handsOn: {
-      intro: 'Two exercises on writing safe, auditable runbooks.',
+      intro: 'Three exercises on writing safe, auditable runbooks and standalone Az scripts.',
       steps: [
         {
           label: 'Q1',
@@ -1368,6 +1813,27 @@ Send-LogToWorkspace -WorkspaceId $env:LA_WS_ID -SharedKey $env:LA_KEY \`
 The custom table is then searchable in KQL alongside other audit data, and the runbook\'s actions become evidenceable.</li>
 </ul>`,
         },
+        {
+          label: 'Q3',
+          question: `A teammate runs this standalone script on their laptop:
+<pre><code>Connect-AzAccount | Out-Null
+$nonCompliant = Get-AzPolicyState -Filter "ComplianceState eq 'NonCompliant'"
+$nonCompliant | Export-Csv -Path "./policy-state.csv" -NoTypeInformation
+Write-Output "Rows: $($nonCompliant.Count)"</code></pre>
+The CSV shows 47 rows. They report "47 non-compliant resources across the org" in standup. The compliance lead pushes back — "we have 30+ subs, that number is way too low." <strong>(a) What\'s the bug? (b) What\'s the minimal change that fixes it? (c) Why is the failure silent — no error, no warning?</strong>`,
+          hint: 'Get-AzPolicyState reads from the current subscription only. The Az session is sticky to whichever sub was last Set-AzContext-ed.',
+          answer: `<ul>
+<li>(a) <strong>The bug</strong>: <code>Get-AzPolicyState</code> queries only the <em>current subscription</em> — the one the laptop\'s last <code>Connect-AzAccount</code> chose by default (usually the first one alphabetically). The other 29+ subs are never queried; their non-compliance is missing from the CSV.</li>
+<li>(b) <strong>The fix</strong> — wrap the query in a subscription loop:
+<pre><code>$nonCompliant = @()
+foreach ($sub in Get-AzSubscription) {
+  Set-AzContext -SubscriptionId $sub.Id | Out-Null
+  $nonCompliant += Get-AzPolicyState -Filter "ComplianceState eq 'NonCompliant'"
+}</code></pre>
+Now every sub the identity can read is queried.</li>
+<li>(c) <strong>Why silent</strong>: <code>Get-AzPolicyState</code> on a single sub is a valid operation. It returns the (correct) set for that sub. Az has no way to know you <em>meant</em> "all subs." No error, no warning — just a quietly small number. This is the most common cross-sub bug in Az scripting, and the reason memorizing the <code>Get-AzSubscription | ForEach { Set-AzContext ... }</code> outer loop is non-negotiable.</li>
+</ul>`,
+        },
       ],
       selfCheck: [
         'I can sketch the runbook skeleton: <code>Connect-AzAccount -Identity</code> → loop subs → filter idempotency + waiver → act → log.',
@@ -1383,6 +1849,7 @@ The custom table is then searchable in KQL alongside other audit data, and the r
       'Idempotency check + waiver tag gives a controlled escape hatch for owners.',
       'Output stream limit is ~1MB; for bigger, write to Log Analytics via the Data Collector API.',
       'Don\'t use Runbooks for sub-second remediation — use Logic Apps + Event Grid.',
+      'Standalone Az.* scripts use the same auth + cmdlet surface as runbooks — a runbook is just a scheduled Az script with managed identity. The cross-sub loop pattern (<code>Get-AzSubscription | ForEach { Set-AzContext ... }</code>) applies to both.',
     ],
     talkingPoints: [
       `"Our remediation runbooks authenticate via the Automation account's Managed Identity — no secrets in scope."`,
@@ -2121,6 +2588,193 @@ resource "azurerm_management_group_policy_assignment" "mcsb_at_workloads" {
           { token: 'enforce = true', type: 'user', note: 'Your choice. `true` applies the effects; `false` is the audit-mode equivalent.' },
         ],
       },
+      {
+        cloud: 'tf',
+        service: 'State & backends — where Terraform remembers what it did',
+        plain: `Every time you <code>apply</code>, Terraform writes a JSON file mapping each
+                resource in your config to its real cloud ID. That file is <strong>state</strong>.
+                Lose it, and Terraform thinks nothing has been deployed. Edit it by hand and you\'ll
+                destroy production. State lives in a <strong>remote backend</strong> (S3 for AWS, Azure Storage
+                for Azure) with object versioning <em>and</em> locking, so concurrent applies can\'t collide.`,
+        detail: [
+          '<b>backend block</b> — declared once in the root module. Terraform reads/writes state from here on every run. Common backends: <code>s3</code> + DynamoDB lock for AWS, <code>azurerm</code> blob with lease for Azure, Terraform Cloud / HCP Terraform.',
+          '<b>State is sensitive</b> — it can contain plaintext outputs of secrets (Key Vault values you imported, RDS master passwords, KMS material). Treat the backend bucket as Tier-1 sensitive; encrypt at rest; restrict reads.',
+          '<b>Locking</b> — the backend takes a lock on state during <code>plan</code> + <code>apply</code>. Two engineers applying simultaneously: the second one waits. S3 uses a DynamoDB row; Azure Storage uses a blob lease.',
+          '<b><code>terraform import</code></b> — pulls an existing resource into state without creating it. Since Terraform 1.5, you write <code>import { id = "...", to = aws_s3_bucket.legacy }</code> blocks in HCL and apply normally — diff-able, reviewable, no out-of-band CLI commands. Bulk imports become routine.',
+          '<b><code>moved {}</code> blocks</b> — when you rename or move a resource in code, a <code>moved</code> block tells Terraform "same resource, new address." No destroy / recreate. Safer than <code>terraform state mv</code> CLI calls because it lives in version control.',
+          '<b><code>terraform state rm</code> / <code>terraform state mv</code></b> — rare manual interventions. Use only when import + moved blocks can\'t express what you need. Always do a <code>terraform state pull</code> backup first.',
+          '<b>Drift detection</b> — schedule <code>terraform plan -refresh-only</code> in CI nightly. Diffs mean someone clicked in the console. For compliance-owned resources, the alert should auto-page.',
+        ],
+        example: `# Remote state, AWS (S3 + DynamoDB lock)
+terraform {
+  backend "s3" {
+    bucket         = "company-tfstate-prod"
+    key            = "platform/governance/terraform.tfstate"
+    region         = "us-east-1"
+    dynamodb_table = "tfstate-locks"
+    encrypt        = true
+  }
+}
+
+# Bulk import — adopt an existing S3 bucket created via the console
+import {
+  id = "legacy-audit-logs-bucket-2018"
+  to = aws_s3_bucket.audit_logs
+}
+
+resource "aws_s3_bucket" "audit_logs" {
+  bucket = "legacy-audit-logs-bucket-2018"
+  # ...
+}
+
+# Refactor — renamed module path without destroying the resource
+moved {
+  from = aws_iam_role.legacy_break_glass
+  to   = module.break_glass.aws_iam_role.this
+}`,
+        exampleAnnotations: [
+          { token: 'backend "s3"', type: 'keyword', note: 'Terraform backend type. Other common: "azurerm", "remote" (Terraform Cloud), "gcs", "http".' },
+          { token: 'dynamodb_table', type: 'keyword', note: 's3 backend argument — names the DynamoDB table that holds the state lock row.' },
+          { token: 'encrypt = true', type: 'keyword', note: 's3 backend argument — server-side encrypt the state object. Always true.' },
+          { token: 'import { id = ... to = ... }', type: 'keyword', note: 'Terraform 1.5+ block — declarative import in code. Apply pulls the resource into state.' },
+          { token: 'moved { from = ... to = ... }', type: 'keyword', note: 'Terraform 1.1+ block — rename / move a resource without destroy/recreate.' },
+          { token: '"company-tfstate-prod" / "tfstate-locks"', type: 'user', note: 'Your S3 bucket + DynamoDB table names. Stable; rarely changed.' },
+          { token: '"platform/governance/terraform.tfstate"', type: 'user', note: 'Your state key (path inside the bucket). One key per root module is the standard.' },
+          { token: '"legacy-audit-logs-bucket-2018"', type: 'user', note: 'The real AWS resource ID (bucket name) you\'re adopting.' },
+        ],
+      },
+      {
+        cloud: 'tf',
+        service: 'Modules — the unit of reuse',
+        plain: `A <strong>module</strong> is just a folder of .tf files. You call it
+                from a parent module like a function — passing inputs, getting outputs.
+                You\'ll write a few; you\'ll consume <em>many</em> (registry modules from
+                AWS, HashiCorp, Microsoft, your own platform team).
+                Two rules: <strong>pin every module to a version</strong>, and <strong>read the
+                source before consuming</strong> — modules execute arbitrary code in your account.`,
+        detail: [
+          '<b>Source forms</b>:',
+          '  • Local <code>source = "./foo"</code> — same repo. No version (uses whatever is checked out).',
+          '  • Git <code>source = "git::https://github.com/...?ref=v1.4.2"</code> — pin to a tag, never to a branch.',
+          '  • Registry <code>source = "Azure/avm-res-storage-storageaccount/azurerm" version = "0.1.0"</code> — public or private registry.',
+          '<b>Version pinning rules</b>: tags in prod, never <code>main</code>. Use <code>~> 1.4</code> for "any 1.x ≥ 1.4 but &lt; 2.0" (allow patches, block majors). Compliance audit findings cluster on "module ref = main" in prod modules.',
+          '<b>Inputs / outputs / locals</b>: <code>variable</code> = inputs, <code>output</code> = exposed values, <code>locals</code> = internal helpers. Mark sensitive ones with <code>sensitive = true</code> so plan output redacts them.',
+          '<b>Module composition</b>: parent calls child; child can call grandchild. Keep depth ≤ 3. Deeper trees become hard to debug.',
+          '<b><code>for_each</code> over a module</b>: fan out one module call to N instances by iterating a map. Use <code>for_each</code> not <code>count</code> — when an entry is removed mid-list, <code>count</code> taints everything after.',
+          '<b>Registry modules to know</b>: AWS — AFT (Account Factory for Terraform), terraform-aws-modules/* for VPC/RDS/EKS. Azure — Azure Verified Modules (AVM, the new official baseline), terraform-azurerm-caf-enterprise-scale (CAF Landing Zones), terraform-azurerm-lz-vending (subscription vending).',
+        ],
+        example: `# Fanning out a "storage-account" module over a map of environments
+module "audit_storage" {
+  source  = "Azure/avm-res-storage-storageaccount/azurerm"
+  version = "0.1.0"
+
+  for_each = {
+    prod    = { sku = "Standard_GRS",  location = "eastus"  }
+    nonprod = { sku = "Standard_LRS",  location = "westus2" }
+  }
+
+  name                = "auditlogs\${each.key}001"
+  resource_group_name = var.audit_rg_name
+  location            = each.value.location
+  sku_name            = each.value.sku
+
+  public_network_access_enabled = false  # corp baseline
+}
+
+# Outputs that downstream modules consume
+output "audit_storage_ids" {
+  value = { for k, v in module.audit_storage : k => v.resource_id }
+}`,
+        exampleAnnotations: [
+          { token: 'source = "Azure/avm-res-storage-storageaccount/azurerm"', type: 'keyword', note: 'Registry-form module source — Azure-org + module-name + provider. Microsoft\'s Azure Verified Modules namespace.' },
+          { token: 'version = "0.1.0"', type: 'keyword', note: 'Registry module version pin. ALWAYS pin in prod; never omit version on a registry module.' },
+          { token: 'for_each = { ... }', type: 'keyword', note: 'Terraform meta-argument — fans the module out over the map. Each key becomes a separate instance.' },
+          { token: 'each.key / each.value', type: 'keyword', note: 'Terraform iteration helpers — the current map key + the current map value.' },
+          { token: 'module.audit_storage', type: 'keyword', note: 'Terraform reference to all instances of the module (a map keyed by each.key).' },
+          { token: '"prod" / "nonprod"', type: 'user', note: 'Your environment keys — any identifiers.' },
+          { token: '"auditlogs${each.key}001"', type: 'user', note: 'Your storage account name pattern — must be globally unique on Azure.' },
+        ],
+      },
+      {
+        cloud: 'tf',
+        service: 'Workflow / CI — how Terraform actually runs in production',
+        plain: `Locally you go <code>init → plan → apply</code>. In production a <strong>bot owns apply</strong>,
+                humans only open PRs. The CI loop: <code>fmt -check → validate → plan → human review → apply on merge</code>.
+                Plus a scheduled drift-detection job that re-plans nightly. Credentials never live as long-lived secrets —
+                use <strong>OIDC federation</strong> so the runner exchanges its identity for short-lived cloud credentials per run.`,
+        detail: [
+          '<b>The CI loop, in order</b>:',
+          '  1 · <code>terraform init</code> — fetches providers + modules + backend.',
+          '  2 · <code>terraform fmt -check</code> — fails the PR if formatting is off.',
+          '  3 · <code>terraform validate</code> — syntax + type check.',
+          '  4 · <code>terraform plan -out=plan.tfplan</code> — saves the plan as an artifact.',
+          '  5 · <strong>human review of the plan diff</strong> — required for prod.',
+          '  6 · on merge: <code>terraform apply plan.tfplan</code> — applies exactly the reviewed plan, no surprises.',
+          '<b>OIDC federation</b> — GitHub Actions (or your CI) gets a short-lived ID token; AWS / Azure trust that token via a configured identity provider; the workflow gets temporary credentials scoped to one run. No long-lived <code>AWS_ACCESS_KEY_ID</code> in secrets. The 2026 default.',
+          '  • AWS: <code>aws-actions/configure-aws-credentials@v4</code> with <code>role-to-assume</code> + <code>role-session-name</code>.',
+          '  • Azure: federated SP credentials on a service principal — <code>az login --service-principal --federated-token</code>.',
+          '<b>Multi-environment patterns</b>: workspaces (one state per workspace, same code) vs root-module-per-env (one state + one code tree per env). <strong>Prefer root-module-per-env</strong> for compliance — clearer audit trail, no risk of typoing the workspace name and applying dev changes to prod.',
+          '<b>Drift detection</b> — schedule a nightly <code>terraform plan -refresh-only</code> against prod. Diff → page on-call. Compliance-owned resources should never drift silently.',
+          '<b>"Bot owns apply" platforms</b>: Atlantis (self-hosted), Terraform Cloud / HCP Terraform (SaaS), Spacelift, Env0. All implement the PR-driven plan-then-apply loop with state hosting and locking.',
+        ],
+        example: `# .github/workflows/terraform.yml — minimal compliance-grade pipeline
+name: terraform
+
+on:
+  pull_request:
+    paths: ['platform/governance/**']
+  push:
+    branches: [main]
+    paths: ['platform/governance/**']
+
+permissions:
+  id-token: write   # OIDC — required to mint the ID token
+  contents: read
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::111122223333:role/terraform-ci
+          aws-region: us-east-1
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.7.5
+      - run: terraform init
+      - run: terraform fmt -check
+      - run: terraform validate
+      - run: terraform plan -out=plan.tfplan
+      - uses: actions/upload-artifact@v4
+        if: github.event_name == 'pull_request'
+        with: { name: tfplan, path: plan.tfplan }
+
+  apply:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: plan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::111122223333:role/terraform-ci
+          aws-region: us-east-1
+      - uses: hashicorp/setup-terraform@v3
+      - run: terraform init
+      - run: terraform apply -auto-approve`,
+        exampleAnnotations: [
+          { token: 'permissions: id-token: write', type: 'keyword', note: 'GitHub Actions permission — required to obtain the OIDC ID token. Without it, configure-aws-credentials fails.' },
+          { token: 'aws-actions/configure-aws-credentials@v4', type: 'keyword', note: 'GitHub Action — exchanges the GitHub OIDC token for short-lived AWS STS credentials.' },
+          { token: 'role-to-assume', type: 'keyword', note: 'IAM role ARN in the target AWS account. The role\'s trust policy must trust the GitHub OIDC provider.' },
+          { token: 'hashicorp/setup-terraform@v3', type: 'keyword', note: 'GitHub Action — installs the named Terraform version on the runner.' },
+          { token: 'terraform fmt -check / validate / plan / apply', type: 'keyword', note: 'Terraform CLI subcommands — the standard CI loop.' },
+          { token: '"arn:aws:iam::111122223333:role/terraform-ci"', type: 'user', note: 'Your CI role ARN — pre-created with a trust policy bound to your GitHub repo + branch.' },
+          { token: '"1.7.5"', type: 'user', note: 'Your Terraform version — pin it; never use "latest" in CI.' },
+          { token: '"platform/governance/**"', type: 'user', note: 'Your path filter — limits which file changes trigger this workflow.' },
+        ],
+      },
     ],
     diagram: `Lifecycle:
 
@@ -2147,9 +2801,13 @@ resource "azurerm_management_group_policy_assignment" "mcsb_at_workloads" {
       'For Azure Policy in Terraform, prefer <b>initiative assignment</b> (one resource) over per-policy assignments (N resources). Fewer state objects, faster plan, easier rollback.',
       '<b>State recovery</b>: if state corrupts, restore from backend versioning (S3 object versions, Azure Storage blob versions) — minutes. <code>terraform import</code> from scratch — hours to days. Make sure backend versioning is on.',
       '<b>The compliance value of Terraform</b>: every guardrail change is a PR, every PR has a diff, every diff has an approver, every apply has a log. That\'s the audit trail. Don\'t click-ops Azure Policy in production.',
+      '<b><code>import {}</code> blocks since TF 1.5</b> made bulk-import routine — generate one block per legacy resource (via a script that reads from Resource Graph / AWS Config), submit as one PR, apply once. Previously you ran <code>terraform import</code> CLI per resource, with no review trail.',
+      '<b><code>terraform_remote_state</code> vs explicit dependencies</b>: <code>terraform_remote_state</code> reads another state\'s outputs. It works but creates an invisible coupling — the consumer\'s plan changes when the producer\'s state changes, with no PR. <strong>Prefer published module outputs</strong> (consume the module directly) or a data source that queries the cloud, both of which are explicit and refresh deterministically.',
+      '<b><code>lifecycle { prevent_destroy = true }</code></b> on compliance-critical resources (audit-log buckets, log-archive accounts, KMS keys you can\'t lose) makes <code>terraform destroy</code> abort. Cheap compliance lock; auditors like to see it on the resources they care about.',
+      '<b><code>sensitive = true</code></b> on variables and outputs redacts them in <code>plan</code> + <code>apply</code> console output. They still land in state — see the "state is sensitive" note — but at least your CI logs don\'t leak them. Set it on anything that should never appear in a log line.',
     ],
     handsOn: {
-      intro: 'Two reading exercises on the Terraform examples above. The skill is reading config that someone else wrote.',
+      intro: 'Six reading exercises on the Terraform examples above. The skill is reading config that someone else wrote.',
       steps: [
         {
           label: 'Q1',
@@ -2196,6 +2854,83 @@ resource "azurerm_management_group_policy_assignment" "mcsb_at_workloads" {
 <li><strong>Use <code>resource</code> when</strong> you want Terraform to own the lifecycle (create, update, destroy).</li>
 </ul>`,
         },
+        {
+          label: 'Q3',
+          question: `Given this <code>backend "s3"</code> block:
+<pre><code>terraform {
+  backend "s3" {
+    bucket         = "company-tfstate-prod"
+    key            = "platform/governance/terraform.tfstate"
+    region         = "us-east-1"
+    dynamodb_table = "tfstate-locks"
+  }
+}</code></pre>
+Engineer A starts <code>terraform apply</code>. Two minutes later, while it is still running, engineer B starts <code>terraform apply</code> against the same root module. <strong>What does B see, and why? What would happen without the <code>dynamodb_table</code> line?</strong>`,
+          hint: 'The s3 backend uses DynamoDB to hold a per-state lock row. Without it, there is no locking.',
+          answer: `<p><strong>With <code>dynamodb_table</code> set</strong>: engineer B\'s <code>apply</code> stalls on <em>"Acquiring state lock. This may take a few moments..."</em> and eventually fails with a clear error naming engineer A as the lock holder (CI host + PID + start time). B knows to wait or to break the lock manually if A\'s process actually crashed. State stays consistent.</p>
+<p><strong>Without <code>dynamodb_table</code></strong>: no lock. Both applies race to read state, mutate cloud, and write state. Whichever finishes second overwrites the first\'s state file — Terraform now believes resources exist that don\'t, or doesn\'t know about resources that do. The cleanup is hours of manual reconciliation with <code>terraform import</code> and <code>state rm</code>. <strong>The <code>dynamodb_table</code> line is not optional in production — verify your backend has it before letting CI auto-apply.</strong></p>`,
+        },
+        {
+          label: 'Q4',
+          question: `In a PR you find this module call:
+<pre><code>module "audit_storage" {
+  source = "git::https://github.com/our-org/tf-storage.git?ref=main"
+
+  name                = "auditlogs001"
+  resource_group_name = var.audit_rg
+}</code></pre>
+<strong>What\'s the single biggest reason a compliance reviewer should reject this PR? What\'s the one-line fix?</strong>`,
+          hint: 'ref=main means "whatever main is right now." That value moves under your feet between plan and apply.',
+          answer: `<p><strong>Problem</strong>: <code>ref = "main"</code> means "fetch whatever <code>main</code> is at the moment <code>terraform init</code> runs." Between today\'s plan review and tomorrow\'s apply, someone could merge a breaking change to <code>tf-storage</code>\'s main — and your supposedly-reviewed apply now runs different code than what you reviewed. The plan-diff audit trail becomes meaningless.</p>
+<p><strong>Fix</strong>: pin to an immutable tag. One-line change:</p>
+<pre><code>source = "git::https://github.com/our-org/tf-storage.git?ref=v1.4.2"</code></pre>
+<p>Tags are immutable; <code>v1.4.2</code> always points at the same commit. The plan you reviewed is the plan you apply. Upgrades happen in a new PR that bumps <code>ref</code> to <code>v1.5.0</code> — explicit, reviewable.</p>
+<p><em>Worse variants to watch for in PRs</em>: <code>?ref=feature/whatever</code> (a branch in development), no <code>?ref</code> at all (= main), or local <code>source = "../tf-storage"</code> in a shared repo (the file may not even exist on the CI runner).</p>`,
+        },
+        {
+          label: 'Q5',
+          question: `You\'re reviewing a refactor PR that renames an IAM role module path. The PR adds these blocks:
+<pre><code>moved {
+  from = aws_iam_role.legacy_break_glass
+  to   = module.break_glass.aws_iam_role.this
+}
+
+module "break_glass" {
+  source = "./modules/break-glass"
+  # ...
+}</code></pre>
+<strong>(a) What does the <code>moved</code> block tell Terraform? (b) Why doesn\'t this PR cause the IAM role to be destroyed and recreated? (c) What would happen if the author forgot the <code>moved</code> block?</strong>`,
+          hint: 'Terraform tracks resources by their address in code. A renamed address looks like "old resource removed, new resource added" unless you tell it otherwise.',
+          answer: `<ul>
+<li><strong>(a)</strong> The <code>moved</code> block tells Terraform: "the resource that used to be addressed as <code>aws_iam_role.legacy_break_glass</code> is now addressed as <code>module.break_glass.aws_iam_role.this</code>." Same real cloud resource; different code address. Terraform updates its state mapping, doesn\'t touch the real IAM role.</li>
+<li><strong>(b)</strong> Because of the rename mapping. State now ties the real IAM role to the new address before the diff is computed; the diff sees "no change" and the apply is a no-op for that resource.</li>
+<li><strong>(c) Without the <code>moved</code> block</strong>: Terraform sees <code>aws_iam_role.legacy_break_glass</code> in state but not in code, and <code>module.break_glass.aws_iam_role.this</code> in code but not in state. The plan says <em>"destroy old role, create new role."</em> Apply runs both. The new role has a new ARN; anything trusting the old ARN (cross-account policies, IAM role chaining) breaks until updated. <code>moved</code> blocks are <strong>the safe refactor primitive</strong>; without them, every code reorganization risks a real-resource destroy/recreate.</li>
+</ul>`,
+        },
+        {
+          label: 'Q6',
+          question: `Two CI snippets target the same AWS account:
+<pre><code># Snippet A — long-lived key in GitHub Secrets
+- run: terraform apply
+  env:
+    AWS_ACCESS_KEY_ID:     \${{ secrets.AWS_KEY }}
+    AWS_SECRET_ACCESS_KEY: \${{ secrets.AWS_SECRET }}
+
+# Snippet B — OIDC federation
+- uses: aws-actions/configure-aws-credentials@v4
+  with:
+    role-to-assume: arn:aws:iam::111122223333:role/terraform-ci
+    aws-region: us-east-1
+- run: terraform apply</code></pre>
+<strong>Why is Snippet B safer? Name three concrete advantages a compliance reviewer cares about.</strong>`,
+          hint: 'Credential lifetime, rotation burden, blast radius if leaked, principal identity in CloudTrail.',
+          answer: `<ol>
+<li><strong>Credential lifetime is minutes, not months.</strong> Snippet B mints STS credentials that expire in ≤1 hour. Snippet A holds a long-lived access key — until someone manually rotates it (usually never). If a runner is compromised, B\'s creds expire before the attacker can chain them; A\'s keep working until detection.</li>
+<li><strong>No secrets to leak from GitHub.</strong> Snippet A stores the key in <code>secrets.AWS_KEY</code>. Anyone with repo admin can read it; a misconfigured workflow can <code>echo</code> it. Snippet B has no secret to leak — the IAM role\'s trust policy is the gate, and it lives in AWS, not GitHub.</li>
+<li><strong>Auditable principal identity.</strong> CloudTrail on Snippet B shows the role <code>terraform-ci</code> + a session name like <code>GitHubActions-<repo>-<run-id></code>. You can trace every API call back to a specific GitHub workflow run. Snippet A shows the static IAM user — no run-level attribution.</li>
+</ol>
+<p>Bonus reviewer flag: with Snippet A, you have to remember to rotate the key on a schedule; with Snippet B, rotation is automatic on every run. <strong>The 2026 default for any new Terraform CI: OIDC.</strong></p>`,
+        },
       ],
       selfCheck: [
         'I can name the four core Terraform building blocks: provider, resource, variable, output.',
@@ -2203,6 +2938,8 @@ resource "azurerm_management_group_policy_assignment" "mcsb_at_workloads" {
         'I know data is a read-only lookup and resource is owned by Terraform.',
         'I would never edit state by hand; the remote backend handles locking.',
         'I read Terraform 10× more often than I write it from scratch.',
+        'I can explain why state files are sensitive — they hold plaintext outputs and resource IDs that map to real cloud objects.',
+        'I know what <code>terraform import</code> does, and prefer the declarative <code>import {}</code> block over the CLI command for anything reviewable.',
       ],
     },
     recap: [
@@ -2211,6 +2948,8 @@ resource "azurerm_management_group_policy_assignment" "mcsb_at_workloads" {
       'On AWS use the <code>aws</code> provider; on Azure use <code>azurerm</code>. Same language, different vocabulary.',
       'Drift = console clicks happened. Detect via <code>plan -refresh-only</code>; fix by re-applying or importing.',
       'You\'ll READ Terraform 10× more than you\'ll write it from scratch.',
+      'State lives in a versioned + locked backend (S3 + DynamoDB or Azure Storage with lease). Never edit by hand.',
+      'Modules are the unit of reuse. Always version-pin: tags in prod, never <code>main</code>. <code>import {}</code> + <code>moved {}</code> are the safe primitives for adoption and refactor.',
     ],
     talkingPoints: [
       `"Our governance is in Terraform — SCPs, Azure Policy assignments, MG hierarchy, all of it. Console changes are drift."`,
