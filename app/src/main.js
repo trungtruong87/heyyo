@@ -50,6 +50,7 @@ import * as vaultPage      from './pages/reference/vault.js';
 import * as quickrefPage   from './pages/reference/quickref.js';
 import * as cheatsheetPage from './pages/reference/cheatsheet.js';
 import * as readingListPage from './pages/reference/readinglist.js';
+import * as artifactMapPage from './pages/reference/artifactmap.js';
 
 // Lab Bench (kept simulators with real eval logic — used inside ticket steps)
 import * as scpSim      from './pages/practice/scp.js';
@@ -108,6 +109,7 @@ const NAV = [
     section: 'Reference', icon: '📎', cloud: 'home',
     items: [
       { route: '/reference/wiki',          label: 'Wiki (mapping + glossary)', icon: '📖', mod: wikiPage,        cloud: 'home' },
+      { route: '/reference/artifact-map',  label: 'Artifact Map (where code lives)', icon: '📁', mod: artifactMapPage, cloud: 'home' },
       { route: '/reference/decisions',     label: 'Decision trees',            icon: '🌳', mod: decisionsPage,   cloud: 'home' },
       { route: '/reference/vault',         label: 'Snippet Vault',             icon: '💼', mod: vaultPage,       cloud: 'home' },
       { route: '/reference/quickref',      label: 'Quick Reference',           icon: '⚡', mod: quickrefPage,     cloud: 'both' },

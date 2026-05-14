@@ -1343,70 +1343,6 @@ details.fnd-panel-collapsible > summary:hover { background: var(--surface2, rgba
   border-radius: 3px;
 }
 
-/* ── Listen bar (Web Speech narration of Foundation pages) ─────────────── */
-.fnd-listen [hidden] { display: none !important; }
-.fnd-listen {
-  padding: 10px 14px;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-.fnd-listen-row {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px;
-}
-.fnd-listen-status {
-  font-size: 12.5px;
-  color: var(--text3);
-}
-.fnd-listen-details {
-  font-size: 13px;
-}
-.fnd-listen-details summary {
-  cursor: pointer;
-  color: var(--text3);
-  font-size: 12px;
-  padding: 2px 0;
-}
-.fnd-listen-controls {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 12px;
-  margin-top: 6px;
-  padding-top: 6px;
-  border-top: 1px dashed var(--border);
-}
-.fnd-listen-controls label {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  color: var(--text2);
-}
-.fnd-listen-controls select,
-.fnd-listen-controls input[type="range"] {
-  font: inherit;
-  color: var(--text);
-}
-.fnd-listen-controls select {
-  background: var(--surface2);
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  padding: 3px 6px;
-}
-[data-theme="dark"] .fnd-listen-controls select { background: rgba(255,255,255,.04); }
-.fnd-listen-controls input[type="range"] { width: 120px; }
-.fnd-listen-active {
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--green) 35%, transparent);
-  transition: box-shadow .2s ease;
-}
-@media (max-width: 600px) {
-  .fnd-listen-controls { gap: 8px; }
-  .fnd-listen-controls input[type="range"] { width: 100px; }
-}
-
 /* ── Field notes (foundation days) ─────────────────────────────────────── */
 .fnd-fieldnotes {
   border-left: 3px solid var(--amber, #d97706);
@@ -1617,4 +1553,121 @@ details.fnd-panel-collapsible > summary:hover { background: var(--surface2, rgba
   .readinglist-page .rl-th-item,
   .readinglist-page .rl-th-chips,
   .readinglist-page .rl-th-own { width: auto; }
+}
+
+/* ── Artifact Map page ────────────────────────────────────────────────── */
+.artifact-map-page .artifact-toc {
+  display: flex; flex-wrap: wrap; gap: 6px 8px;
+  padding: 12px 14px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  margin-bottom: 1rem;
+}
+.artifact-toc-link {
+  font-size: 12.5px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  text-decoration: none;
+  background: color-mix(in srgb, var(--text3) 10%, transparent);
+  color: var(--text);
+  border: 1px solid var(--border);
+}
+.artifact-toc-link:hover { background: color-mix(in srgb, var(--text3) 18%, transparent); }
+.artifact-toc-aws    { border-left: 3px solid var(--amber); }
+.artifact-toc-azure  { border-left: 3px solid var(--blue); }
+.artifact-toc-tf     { border-left: 3px solid var(--purple); }
+.artifact-toc-home   { border-left: 3px solid var(--green); }
+
+.artifact-rows { display: grid; gap: 12px; }
+.artifact-row {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 1rem 1.15rem 1.1rem;
+  scroll-margin-top: 80px;
+}
+.artifact-row-aws    { border-left: 4px solid var(--amber); }
+.artifact-row-azure  { border-left: 4px solid var(--blue); }
+.artifact-row-tf     { border-left: 4px solid var(--purple); }
+.artifact-row-home   { border-left: 4px solid var(--green); }
+.artifact-row-head {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  margin-bottom: .65rem;
+}
+.artifact-row-head h2 { margin: 0; font-size: 17px; }
+.artifact-ext {
+  font-size: 12px; padding: 1px 7px;
+  background: color-mix(in srgb, var(--text3) 14%, transparent);
+  border-radius: 4px;
+}
+.artifact-row-body {
+  display: grid;
+  grid-template-columns: 130px 1fr;
+  gap: 6px 14px;
+  margin: 0;
+}
+.artifact-row-body dt {
+  font-weight: 600; color: var(--text2);
+  font-size: 12.5px; text-transform: uppercase; letter-spacing: .04em;
+}
+.artifact-row-body dd { margin: 0; color: var(--text); font-size: 13.5px; line-height: 1.45; }
+.artifact-deploy-list { margin: 0; padding-left: 1.1rem; }
+.artifact-deploy-list li { margin: 2px 0; }
+@media (max-width: 700px) {
+  .artifact-row-body {
+    grid-template-columns: 1fr;
+    gap: 2px 0;
+  }
+  .artifact-row-body dt { margin-top: 6px; }
+}
+
+/* ── Takeaways card (merged recap + talking points) ───────────────────── */
+.fnd-takeaways .fnd-takeaways-list { padding-left: 1.1rem; }
+.fnd-takeaways .fnd-takeaways-list li { margin: 6px 0; }
+.fnd-takeaways .takeaway-say {
+  display: inline-block;
+  margin-top: 4px;
+  font-size: 12.5px;
+}
+.fnd-takeaways .takeaway-say summary {
+  cursor: pointer;
+  color: var(--text3);
+  font-size: 12px;
+}
+.fnd-takeaways .takeaway-say p {
+  margin: 4px 0 0;
+  padding: 6px 10px;
+  border-left: 2px solid var(--text3);
+  background: color-mix(in srgb, var(--text3) 6%, transparent);
+  font-style: italic;
+}
+
+/* ── Field notes pinned above the panels ─────────────────────────────── */
+.fnd-fieldnotes-top {
+  border-left: 3px solid var(--amber);
+  background: linear-gradient(90deg,
+    color-mix(in srgb, var(--amber) 8%, transparent),
+    transparent 70%);
+}
+.fnd-fieldnotes-top .fnd-fieldnotes-list { margin: 6px 0 0; padding-left: 1.1rem; }
+
+/* ── Deep-dive (collapsed conceptDive) ───────────────────────────────── */
+details.fnd-concept > summary {
+  cursor: pointer;
+  display: flex; align-items: center; gap: 10px;
+  list-style: none;
+}
+details.fnd-concept > summary::-webkit-details-marker { display: none; }
+details.fnd-concept > summary::before {
+  content: '▸';
+  font-size: 14px;
+  color: var(--text3);
+  transition: transform .15s ease;
+}
+details.fnd-concept[open] > summary::before { transform: rotate(90deg); }
+.fnd-concept-hint {
+  font-size: 11.5px;
+  color: var(--text3);
+  font-style: italic;
 }

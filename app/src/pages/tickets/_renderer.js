@@ -5,6 +5,7 @@
 import { html, $, $$, badge, escapeHtml, copyToClipboard } from '../../core/ui.js';
 import { TICKETS, ticketById } from '../../data/tickets.js';
 import { getTktDone, setTktDone, addSnippet } from '../../core/storage.js';
+import { artifactCalloutHtml } from '../../data/artifacts.js';
 
 function cloudCls(c) {
   if (c === 'aws') return 'aws';
@@ -22,6 +23,51 @@ const KIND_LABEL = {
   tf:         'Terraform (HCL)',
   note:       'Note (markdown / plain text)',
 };
+
+// Map a build.artifactKind to an artifact registry slug.
+// Explicit `t.build.artifact` overrides this if set.
+const KIND_TO_ARTIFACT = {
+  scp:        'aws-scp-json',
+  azpolicy:   'azure-policy-json',
+  lambda:     'aws-config-lambda',
+  powershell: 'azure-runbook-ps1',
+  kql:        'kql',
+  tf:         'terraform-hcl',
+  note:       'markdown-runbook',
+};
+
+// Takeaways card. Accepts either new `t.takeaways` shape or legacy
+// `t.recap` + `t.talkingPoints`.
+function renderTicketTakeawaysCard(t) {
+  if (Array.isArray(t.takeaways) && t.takeaways.length) {
+    return `
+      <div class="card fnd-takeaways">
+        <h2>📌 Takeaways</h2>
+        <ul class="fnd-takeaways-list">
+          ${t.takeaways.map(x => `
+            <li>
+              <span class="takeaway-point">${x.point}</span>
+              ${x.sayItOutLoud ? `
+                <details class="takeaway-say">
+                  <summary>🗣 for stand-up</summary>
+                  <p>${x.sayItOutLoud}</p>
+                </details>` : ''}
+            </li>`).join('')}
+        </ul>
+      </div>`;
+  }
+  const recap = Array.isArray(t.recap) && t.recap.length ? `
+    <div class="card ticket-recap">
+      <h2>📌 Recap</h2>
+      <ul>${t.recap.map(r => `<li>${r}</li>`).join('')}</ul>
+    </div>` : '';
+  const talking = Array.isArray(t.talkingPoints) && t.talkingPoints.length ? `
+    <div class="card ticket-talking">
+      <h2>🗣️ Meeting talking points</h2>
+      <ol>${t.talkingPoints.map(p => `<li>${p}</li>`).join('')}</ol>
+    </div>` : '';
+  return recap + talking;
+}
 
 export function renderTicket(id) {
   const t = ticketById(id);
@@ -127,19 +173,14 @@ export function renderTicket(id) {
           <div class="btn-row">
             <button class="btn" data-action="copy-sample">Copy to clipboard</button>
           </div>
+          ${(() => {
+            const slug = t.build.artifact || KIND_TO_ARTIFACT[t.build.artifactKind];
+            return slug ? artifactCalloutHtml(slug) : '';
+          })()}
         </div>
       </div>
 
-      <!-- Recap + Talking -->
-      <div class="card ticket-recap">
-        <h2>📌 Recap</h2>
-        <ul>${t.recap.map(r => `<li>${r}</li>`).join('')}</ul>
-      </div>
-
-      <div class="card ticket-talking">
-        <h2>🗣️ Meeting talking points</h2>
-        <ol>${t.talkingPoints.map(p => `<li>${p}</li>`).join('')}</ol>
-      </div>
+      ${renderTicketTakeawaysCard(t)}
 
       ${t.production ? `
         <div class="card ticket-production">

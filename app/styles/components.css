@@ -326,3 +326,55 @@ label { font-size: 12px; color: var(--text2); display: block; margin-bottom: 4px
   padding: 2rem; text-align: center;
   color: var(--text3); font-size: 13px;
 }
+
+/* ─── Artifact callout (inline under a code example) ─── */
+.artifact-callout {
+  margin-top: .65rem;
+  padding: 10px 12px 12px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: color-mix(in srgb, var(--text3) 6%, transparent);
+  font-size: 13px;
+}
+.artifact-callout-aws    { border-left: 3px solid var(--amber); }
+.artifact-callout-azure  { border-left: 3px solid var(--blue); }
+.artifact-callout-tf     { border-left: 3px solid var(--purple); }
+.artifact-callout-home   { border-left: 3px solid var(--green); }
+.artifact-callout-head {
+  display: flex; align-items: center; gap: 6px;
+  margin-bottom: 6px;
+  font-size: 13px;
+}
+.artifact-callout-icon { font-size: 14px; }
+.artifact-callout-body {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 4px 12px;
+  margin: 0;
+}
+.artifact-callout-body dt {
+  font-weight: 600;
+  color: var(--text2);
+  font-size: 12px;
+}
+.artifact-callout-body dd {
+  margin: 0;
+  color: var(--text2);
+  font-size: 12.5px;
+}
+.artifact-callout-more {
+  display: inline-block;
+  margin-top: 8px;
+  font-size: 12px;
+  color: var(--text2);
+  text-decoration: none;
+  border-bottom: 1px dashed currentColor;
+}
+.artifact-callout-more:hover { color: var(--text); }
+@media (max-width: 600px) {
+  .artifact-callout-body {
+    grid-template-columns: 1fr;
+    gap: 2px 0;
+  }
+  .artifact-callout-body dt { margin-top: 4px; }
+}

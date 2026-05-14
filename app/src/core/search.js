@@ -12,11 +12,12 @@ let currentMatches = [];
 
 export async function initSearch(NAV) {
   // Lazy-load data so the search index doesn't block first paint.
-  const [{ FOUNDATIONS }, { TICKETS }, { MAPPING, GLOSSARY }, { DECISIONS }] = await Promise.all([
+  const [{ FOUNDATIONS }, { TICKETS }, { MAPPING, GLOSSARY }, { DECISIONS }, { ARTIFACTS }] = await Promise.all([
     import('../data/foundations.js').catch(() => ({ FOUNDATIONS: [] })),
     import('../data/tickets.js').catch(()       => ({ TICKETS:     [] })),
     import('../data/mapping.js').catch(()       => ({ MAPPING: [], GLOSSARY: [] })),
     import('../data/decisions.js').catch(()     => ({ DECISIONS:   [] })),
+    import('../data/artifacts.js').catch(()     => ({ ARTIFACTS:   {} })),
   ]);
 
   index = [];
@@ -95,6 +96,17 @@ export async function initSearch(NAV) {
       route: `/reference/wiki`,
       kind:  'glossary',
       terms: `${g.term} ${g.plain} ${g.detail}`.toLowerCase(),
+    });
+  });
+
+  // Artifact map — one search entry per artifact type so Cmd-K finds them.
+  Object.entries(ARTIFACTS).forEach(([slug, a]) => {
+    index.push({
+      title: a.name,
+      sub:   `Artifact · ${a.extension}`,
+      route: `/reference/artifact-map#${slug}`,
+      kind:  'artifact',
+      terms: `${slug} ${a.name} ${a.extension} ${a.livesIn} ${a.runHow} ${(a.deploy || []).join(' ')} ${a.notes || ''}`.toLowerCase(),
     });
   });
 

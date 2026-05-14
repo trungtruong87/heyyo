@@ -38,7 +38,9 @@ export function currentRoute() { return currentPath; }
 
 function parseHash() {
   const h = location.hash.replace(/^#/, '');
-  return h || '/study/home';   // default landing
+  // Strip in-page anchor (second '#'). Pages that need it read window.location.hash themselves.
+  const routePart = h.split('#')[0];
+  return routePart || '/study/home';   // default landing
 }
 
 function handleRoute() {
